@@ -1,0 +1,16 @@
+{
+  "name": "agent-status-viewer",
+  "version": "0.1.0",
+  "description": "Desktop viewer for the agent-behaviors session-status board (~/.agent-behaviors/status).",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "start": "env -u ELECTRON_RUN_AS_NODE electron ."
+  },
+  "devDependencies": {
+    "electron": "^33.2.1"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  }
+}

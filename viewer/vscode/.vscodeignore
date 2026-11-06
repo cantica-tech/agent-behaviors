@@ -1,0 +1,4 @@
+scripts/**
+*.vsix
+.gitignore
+install.sh

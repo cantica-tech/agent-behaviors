@@ -1,0 +1,73 @@
+{
+  "name": "agent-status",
+  "displayName": "Agent Status",
+  "description": "Live status of the agent sessions on this machine, from the agent-behaviors session-status board.",
+  "version": "0.1.0",
+  "publisher": "canticatech",
+  "license": "UNLICENSED",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cantica-tech/agent-behaviors"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "agentStatus.open",
+        "title": "Open Agent Status",
+        "category": "Agent Status"
+      },
+      {
+        "command": "agentStatus.refresh",
+        "title": "Refresh",
+        "category": "Agent Status"
+      }
+    ],
+    "configuration": {
+      "title": "Agent Status",
+      "properties": {
+        "agentStatus.boardDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Status board directory. Empty means ~/.agent-behaviors/status."
+        },
+        "agentStatus.usageScript": {
+          "type": "string",
+          "default": "",
+          "description": "Path to session-status/scripts/usage.py. Empty means the copy bundled with the extension."
+        },
+        "agentStatus.python": {
+          "type": "string",
+          "default": "python3",
+          "description": "Python 3 interpreter used to run usage.py."
+        },
+        "agentStatus.usageIntervalSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 10,
+          "description": "How often to measure token usage, in seconds."
+        },
+        "agentStatus.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a summary of the agent sessions in the status bar."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "sync": "node scripts/sync.js",
+    "vscode:prepublish": "node scripts/sync.js",
+    "package": "npx --yes @vscode/vsce@3.2.1 package --allow-missing-repository --skip-license"
+  }
+}
