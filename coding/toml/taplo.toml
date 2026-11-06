@@ -1,0 +1,20 @@
+# Minimal default Taplo configuration for the toml skill (see SKILL.md).
+# Used only when the project has no .taplo.toml / taplo.toml of its own and
+# TAPLO_CONFIG is not set:  taplo check --config <skill>/taplo.toml <files>
+# A project's own Taplo config always replaces this file entirely.
+# Options: https://taplo.tamasfe.dev/configuration/formatter-options.html
+# No `include` / `exclude`: the agent passes the files to check explicitly.
+
+[formatting]
+# Two-space indentation for nested arrays and inline tables.
+indent_string = "  "
+# Wrap arrays longer than this many characters.
+column_width = 80
+# Keep the author's key order; never reorder keys.
+reorder_keys = false
+# Don't align "=" across consecutive entries (keeps diffs small).
+align_entries = false
+# At most one blank line in a row.
+allowed_blank_lines = 1
+# End every file with a newline.
+trailing_newline = true
