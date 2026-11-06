@@ -15,6 +15,8 @@ const { createMonitor } = require("./media/status");
 
 /** The open webview panel, or null. */
 let panel = null;
+/** Every live webview showing the view (editor panel and activity-bar view). */
+const webviews = new Set();
 /** The running status monitor, or null. */
 let monitor = null;
 /** Status-bar item with the session summary. */
@@ -55,13 +57,60 @@ function updateStatusBar(snap) {
 }
 
 /**
- * Handle a new snapshot: remember it, refresh the status bar and the panel.
+ * Handle a new snapshot: remember it, refresh the status bar and every webview.
  * @param {object} snap Snapshot from the monitor.
  */
 function onSnapshot(snap) {
   latest = snap;
   updateStatusBar(snap);
-  if (panel) panel.webview.postMessage({ type: "status", snapshot: snap });
+  for (const webview of webviews) webview.postMessage({ type: "status", snapshot: snap });
+}
+
+/**
+ * Set up a webview (panel or activity-bar view): options, HTML, messages.
+ * @param {vscode.Webview} webview Target webview.
+ * @param {vscode.ExtensionContext} context Extension context.
+ * @returns {vscode.Disposable} Unregisters the webview; call when it is disposed.
+ */
+function attachWebview(webview, context) {
+  const media = vscode.Uri.joinPath(context.extensionUri, "media");
+  webview.options = { enableScripts: true, localResourceRoots: [media] };
+  webview.html = html(webview, media);
+  webviews.add(webview);
+  const sub = webview.onDidReceiveMessage((msg) => {
+    if (msg.type === "ready" && latest) webview.postMessage({ type: "status", snapshot: latest });
+    if (msg.type === "refresh" && monitor) {
+      monitor.refresh();
+      onSnapshot(monitor.snapshot());
+    }
+  });
+  return new vscode.Disposable(() => {
+    webviews.delete(webview);
+    sub.dispose();
+  });
+}
+
+/**
+ * Provider of the activity-bar view: the same UI, in the sidebar.
+ * @implements {vscode.WebviewViewProvider}
+ */
+class SidebarProvider {
+  /**
+   * @param {vscode.ExtensionContext} context Extension context.
+   */
+  constructor(context) {
+    /** Extension context, for resource URIs. */
+    this.context = context;
+  }
+
+  /**
+   * Fill the view when VS Code shows it.
+   * @param {vscode.WebviewView} view The view to fill.
+   */
+  resolveWebviewView(view) {
+    const detach = attachWebview(view.webview, this.context);
+    view.onDidDispose(() => detach.dispose());
+  }
 }
 
 /**
@@ -130,16 +179,13 @@ function openPanel(context) {
     retainContextWhenHidden: true,
     localResourceRoots: [media],
   });
-  panel.iconPath = new vscode.ThemeIcon("pulse");
-  panel.webview.html = html(panel.webview, media);
-  panel.webview.onDidReceiveMessage((msg) => {
-    if (msg.type === "ready" && latest) onSnapshot(latest);
-    if (msg.type === "refresh" && monitor) {
-      monitor.refresh();
-      onSnapshot(monitor.snapshot());
-    }
-  });
+  panel.iconPath = {
+    light: vscode.Uri.joinPath(media, "viewer.svg"),
+    dark: vscode.Uri.joinPath(media, "viewer-dark.svg"),
+  };
+  const detach = attachWebview(panel.webview, context);
   panel.onDidDispose(() => {
+    detach.dispose();
     panel = null;
   });
 }
@@ -155,6 +201,9 @@ function activate(context) {
     statusItem,
     vscode.commands.registerCommand("agentStatus.open", () => openPanel(context)),
     vscode.commands.registerCommand("agentStatus.refresh", () => monitor && monitor.refresh()),
+    vscode.window.registerWebviewViewProvider("agentStatus.sidebar", new SidebarProvider(context), {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration("agentStatus")) startMonitor(context);
     }),

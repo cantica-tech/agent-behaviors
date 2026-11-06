@@ -2,8 +2,9 @@
   "name": "agent-status",
   "displayName": "Agent Status",
   "description": "Live status of the agent sessions on this machine, from the agent-behaviors session-status board.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "publisher": "canticatech",
+  "icon": "media/icon.png",
   "license": "UNLICENSED",
   "private": true,
   "repository": {
@@ -25,12 +26,14 @@
       {
         "command": "agentStatus.open",
         "title": "Open Agent Status",
-        "category": "Agent Status"
+        "category": "Agent Status",
+        "icon": "$(link-external)"
       },
       {
         "command": "agentStatus.refresh",
         "title": "Refresh",
-        "category": "Agent Status"
+        "category": "Agent Status",
+        "icon": "$(refresh)"
       }
     ],
     "configuration": {
@@ -63,6 +66,39 @@
           "description": "Show a summary of the agent sessions in the status bar."
         }
       }
+    },
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agentStatus",
+          "title": "Agent Status",
+          "icon": "media/viewer.svg"
+        }
+      ]
+    },
+    "views": {
+      "agentStatus": [
+        {
+          "type": "webview",
+          "id": "agentStatus.sidebar",
+          "name": "Sessions",
+          "icon": "media/viewer.svg"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "agentStatus.refresh",
+          "when": "view == agentStatus.sidebar",
+          "group": "navigation"
+        },
+        {
+          "command": "agentStatus.open",
+          "when": "view == agentStatus.sidebar",
+          "group": "navigation"
+        }
+      ]
     }
   },
   "scripts": {

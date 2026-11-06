@@ -17,6 +17,14 @@ deltas are kept in `.usage-viewer.json`, apart from everyone else's.
 The same view is available inside VS Code: see [vscode/](vscode/README.md).
 Both share the status monitor, renderer and styles in [shared/](shared).
 
+## Icon
+
+[viewer.svg](viewer.svg) is the icon of both viewers. Electron window icons
+and VS Code extension icons must be PNG, so `npm run icons` renders it into
+[icons/](icons): `icon.png` (512 px, app and dock), `icon-128.png` (VS Code
+extension) and `viewer-dark.svg` (white copy for dark themes). Run it again
+after changing `viewer.svg`.
+
 ## Run
 
 ```sh

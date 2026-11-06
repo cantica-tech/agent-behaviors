@@ -5,7 +5,8 @@
   "main": "main.js",
   "private": true,
   "scripts": {
-    "start": "env -u ELECTRON_RUN_AS_NODE electron ."
+    "start": "env -u ELECTRON_RUN_AS_NODE electron .",
+    "icons": "env -u ELECTRON_RUN_AS_NODE electron scripts/render-icons.js"
   },
   "devDependencies": {
     "electron": "^33.2.1"

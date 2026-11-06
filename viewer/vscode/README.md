@@ -7,6 +7,8 @@ the same view as the [Electron viewer](../README.md).
 - **Agent Status: Open Agent Status** opens the panel: one card per session
   with state, project, task, blocker, items left, ETA, projected and measured
   tokens, items and notes.
+- The **Agent Status** icon in the activity bar opens the same view in the
+  sidebar, with Refresh and "open in editor" buttons in its title bar.
 - The status bar shows how many sessions are working, waiting or blocked.
   Click it to open the panel.
 

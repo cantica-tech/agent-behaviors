@@ -1,7 +1,8 @@
 /**
  * Copy the files the extension shares with the Electron viewer into media/,
  * so the packaged .vsix is self-contained: the status monitor, renderer and
- * styles from ../shared, and usage.py from the session-status skill.
+ * styles from ../shared, the icons from ../ (viewer.svg, icons/), and usage.py
+ * from the session-status skill.
  * Run before packaging (npm run sync; vscode:prepublish runs it too).
  */
 
@@ -17,6 +18,9 @@ const FILES = {
   [path.join(ROOT, "..", "shared", "status.js")]: "status.js",
   [path.join(ROOT, "..", "shared", "renderer.js")]: "renderer.js",
   [path.join(ROOT, "..", "shared", "styles.css")]: "styles.css",
+  [path.join(ROOT, "..", "viewer.svg")]: "viewer.svg",
+  [path.join(ROOT, "..", "icons", "viewer-dark.svg")]: "viewer-dark.svg",
+  [path.join(ROOT, "..", "icons", "icon-128.png")]: "icon.png",
   [path.join(ROOT, "..", "..", "session-status", "scripts", "usage.py")]: "usage.py",
 };
 

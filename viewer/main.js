@@ -6,12 +6,15 @@
  * ../session-status/scripts/usage.py. Read-only towards the board.
  */
 
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeImage } = require("electron");
 const path = require("path");
 const { createMonitor } = require("./shared/status");
 
 /** Measured-usage script shipped with the session-status skill. */
 const USAGE_PY = path.join(__dirname, "..", "session-status", "scripts", "usage.py");
+
+/** App icon rendered from viewer.svg (npm run icons). */
+const ICON = path.join(__dirname, "icons", "icon.png");
 
 /** The viewer window, or null before it opens. */
 let win = null;
@@ -33,6 +36,7 @@ function createWindow() {
     height: 720,
     title: "Agent Status",
     backgroundColor: "#111418",
+    icon: ICON,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -50,6 +54,7 @@ ipcMain.handle("refresh", () => {
 });
 
 app.whenReady().then(() => {
+  if (process.platform === "darwin" && app.dock) app.dock.setIcon(nativeImage.createFromPath(ICON));
   monitor = createMonitor({ usagePy: USAGE_PY, usageState: "viewer", onChange: send });
   createWindow();
   app.on("activate", () => {
