@@ -2,7 +2,7 @@
   "name": "agent-status",
   "displayName": "Agent Status",
   "description": "Live status of the agent sessions on this machine, from the agent-behaviors session-status board.",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "publisher": "canticatech",
   "icon": "media/icon.png",
   "license": "UNLICENSED",
@@ -54,12 +54,6 @@
           "default": "python3",
           "description": "Python 3 interpreter used to run usage.py."
         },
-        "agentStatus.usageIntervalSeconds": {
-          "type": "number",
-          "default": 30,
-          "minimum": 10,
-          "description": "How often to measure token usage, in seconds."
-        },
         "agentStatus.showStatusBar": {
           "type": "boolean",
           "default": true,
@@ -104,6 +98,6 @@
   "scripts": {
     "sync": "node scripts/sync.js",
     "vscode:prepublish": "node scripts/sync.js",
-    "package": "npx --yes @vscode/vsce@3.2.1 package --allow-missing-repository --skip-license"
+    "package": "npx --yes @vscode/vsce@3.2.1 package --no-dependencies --allow-missing-repository --skip-license"
   }
 }

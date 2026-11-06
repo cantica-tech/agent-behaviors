@@ -10,7 +10,9 @@ usage from [usage.py](../session-status/scripts/usage.py). Sessions with
 usage but no board entry appear as `unreported`. The header pills show
 whether each `<model>.status` background session is alive.
 
-The board refreshes as soon as a file changes, and usage every 30 seconds.
+The board refreshes as soon as a file changes. How often it also polls the
+board and re-measures usage is set in `~/.agent-behaviors/session-status.json`
+(`viewerBoardSeconds`, `viewerUsageSeconds`); a valid edit applies at once.
 The viewer only reads: it never writes a session entry. Its own `usage.py`
 deltas are kept in `.usage-viewer.json`, apart from everyone else's.
 

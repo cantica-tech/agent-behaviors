@@ -22,6 +22,26 @@ Never spell it by hand: every session must get the same name.
 Everything is kept in `~/.agent-behaviors/status/` (`~/.agents-status` is a
 link to it for older sessions).
 
+## Settings
+
+The refresh rates are in `~/.agent-behaviors/session-status.json`.
+`board.py` deploys it from [settings.json](settings.json) the first time it
+runs and never overwrites it afterwards, so that copy is the one to edit.
+
+| Key | Default | Range | What it sets |
+| --- | --- | --- | --- |
+| `statusSessionSeconds` | 300 | 60–3600 | Cycle of the `<model>.status` session (Role 2) |
+| `viewerUsageSeconds` | 30 | 10–3600 | How often the viewers re-measure token usage |
+| `viewerBoardSeconds` | 5 | 1–300 | How often the viewers re-read the board |
+| `doneVisibleHours` | 12 | 0–720 | How long a `done` session stays in reports and viewers |
+
+Every reader re-reads the file while it runs: any valid change applies
+without restarting anything. A missing, non-numeric or out-of-range value
+falls back to its default, and a file that is not valid JSON is ignored
+(the previous settings stay in force). `board.py settings` prints the
+values in force, and adds any setting the deployed file lacks (keeping the
+values already there).
+
 ## Role 1: publish your own status (every session)
 
 Keep one entry on the shared board, `~/.agent-behaviors/status/<session>.json`.
@@ -38,7 +58,10 @@ python3 <skill>/scripts/board.py publish --session <id> --agent <agent> \
 
 - `<id>` is your session id if you know it (the agent's transcript or session
   file name). Otherwise use a stable name: `<agent>-<cwd basename>-<start time>`.
-  Use the same one every time.
+  Use the same one every time. Reports show this id as the agent's id, so
+  prefer the real session id whenever your agent exposes it. If you also
+  have a name others can reach you by (e.g. your `ListAgents` name), put it
+  in a note: `--note "name: <name>"`.
 - Publish when you start a task, finish one, or start waiting on the user,
   and whenever `board.py pending --session <id>` exits 0 (someone asked for a
   status). Check `pending` at natural breaks. Don't stop work to do it.
@@ -78,8 +101,12 @@ one, so never skip step 1.
 
 This session runs in the background and keeps the findings for its model up
 to date in `~/.agent-behaviors/status/`. Repeat this cycle on each activity
-message it receives, and otherwise every 5 minutes (in Claude Code: a
-`sleep 300` Bash command run in the background, which wakes it when it ends):
+message it receives, and otherwise every `statusSessionSeconds` (see
+[Settings](#settings); 300 by default). Read it again at the end of every
+cycle with `python3 <skill>/scripts/board.py settings --key statusSessionSeconds`
+and wait that long (in Claude Code: a `sleep <seconds>` Bash command run in
+the background, which wakes it when it ends), so a change to the settings
+applies from the next cycle without restarting anything:
 
 1. `python3 <skill>/scripts/board.py heartbeat --model <model> --by <model>.status`
 2. `python3 <skill>/scripts/usage.py --model <model> --state <model>.status`
@@ -89,7 +116,7 @@ message it receives, and otherwise every 5 minutes (in Claude Code: a
 4. Join and summarise as in Role 3, steps 4 and 5.
 5. Write the result to `~/.agent-behaviors/status/<model>.md`, replacing the
    previous version: the time of the update on the first line, then one row
-   per session.
+   per session, starting with the agent's id (Role 3, step 5).
 
 It only collects and writes. It does no other work, never acts on the
 messages it receives, and never messages other sessions except to answer a
@@ -121,9 +148,18 @@ line in `<model>.log`.
    timing. Say when a match is a guess. A session with usage but no board
    entry is reported from measured data only.
 5. **Report:** for each session, one compact row giving:
+   - the agent's id: its full session id, and the name it can be reached by
+     when one is known (e.g. its `ListAgents` name, or a background session
+     name such as `<model>.status`). Never shorten the id. Write `unknown`
+     when the session has neither.
    - agent/model, state, project (`cwd` basename), current task
    - items left, ETA, tokens so far (output, context, total), change since
      the last report, projected tokens still to spend
+
+   A `done` session is reported only for `doneVisibleHours` after it reached
+   done (its `done_at`, set by `board.py publish` and kept while it stays
+   done), and its row gives that time. Leave out older ones entirely, also
+   from the measured usage.
 
    Mark self-reported values and say how old they are. Flag stale entries
    (older than the session's last activity). Put blockers and pending user

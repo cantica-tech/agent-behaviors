@@ -30,7 +30,12 @@ main { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(340px,
 .top { display: flex; align-items: baseline; gap: 8px; }
 .state { font-weight: 600; color: var(--state); text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }
 .project { font-weight: 600; font-size: 14px; }
-.sid { margin-left: auto; color: var(--muted); font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+.ident { margin-top: 2px; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; user-select: text; }
+.ident .k { font-size: 11px; }
+.sid { color: var(--text); font-family: ui-monospace, Menlo, monospace; font-size: 11px; }
+.name { color: var(--text); font-weight: 600; }
+.doneat { margin-top: 2px; color: var(--done); font-size: 12px; font-weight: 600; }
+.filters { display: flex; flex-direction: column; gap: 2px; }
 .model { color: var(--muted); font-size: 12px; }
 .task { margin: 8px 0; white-space: pre-wrap; word-break: break-word; }
 .blocker { margin: 6px 0; padding: 6px 8px; border-radius: 6px; background: var(--warn-bg); color: var(--warn); }

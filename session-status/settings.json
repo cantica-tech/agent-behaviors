@@ -1,0 +1,13 @@
+{
+  "_doc": {
+    "about": "Refresh rates of the session-status skill. Deployed to ~/.agent-behaviors/session-status.json, which is the copy to edit. Every reader re-reads it while running, so a valid change applies without restarting anything. A value that is missing, not a number or out of range falls back to its default; a file that is not valid JSON (e.g. half-saved) is ignored and the previous settings are kept. Keys starting with _ are documentation.",
+    "statusSessionSeconds": "How often the <model>.status background session runs its cycle when no activity message wakes it (60-3600).",
+    "viewerUsageSeconds": "How often the viewers re-measure token usage with usage.py (10-3600).",
+    "viewerBoardSeconds": "How often the viewers re-read the board, on top of reacting to file changes at once (1-300).",
+    "doneVisibleHours": "How long a session whose state is done stays in reports and viewers, counted from when it reached done (0-720; 0 hides done sessions at once)."
+  },
+  "statusSessionSeconds": 300,
+  "viewerUsageSeconds": 30,
+  "viewerBoardSeconds": 5,
+  "doneVisibleHours": 12
+}

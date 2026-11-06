@@ -9,6 +9,9 @@ Everything lives in ~/.agent-behaviors/status/:
   .<model>.status.json      claim + heartbeat of the <model>.status session
   .request.json             the latest "please publish now" request
 
+Settings live in ~/.agent-behaviors/session-status.json, deployed from the
+skill's settings.json on first use and re-read on every call.
+
 `<model>` is always the key given by `board.py model-key <model id>`.
 
   board.py publish --session ID --agent NAME [--model M] [--cwd DIR]
@@ -24,6 +27,8 @@ Everything lives in ~/.agent-behaviors/status/:
   board.py heartbeat --model M --by NAME
                                      the <model>.status session is alive
   board.py status --model M          print the <model>.status claim; exit 0 if alive
+  board.py settings [--key K]        print the effective settings (or one value),
+                                     deploying the default file if it is missing
 """
 
 import argparse
@@ -39,6 +44,17 @@ BOARD = os.path.expanduser("~/.agent-behaviors/status")
 REQUEST = os.path.join(BOARD, ".request.json")
 #: Minutes without a heartbeat after which a <model>.status session counts as gone.
 STALE_MINUTES = 15
+#: Deployed settings file: the copy users edit; re-read on every call.
+SETTINGS = os.path.expanduser("~/.agent-behaviors/session-status.json")
+#: Default settings shipped with the skill, deployed when SETTINGS is missing.
+DEFAULT_SETTINGS = os.path.join(os.path.dirname(os.path.realpath(__file__)), "..", "settings.json")
+#: Allowed range (inclusive) of each setting; values outside it are ignored.
+SETTING_RANGES = {
+    "statusSessionSeconds": (60, 3600),
+    "viewerUsageSeconds": (10, 3600),
+    "viewerBoardSeconds": (1, 300),
+    "doneVisibleHours": (0, 720),
+}
 
 
 def now_iso():
@@ -91,6 +107,12 @@ def publish(a):
                  notes=a.note or [],
                  updated=now_iso(), updated_epoch=time.time())
     path = os.path.join(BOARD, f"{a.session}.json")
+    # done_at: when the session first reached "done"; kept while it stays done.
+    if a.state == "done":
+        prev = load_json(path) or {}
+        keep = prev.get("state") == "done" and prev.get("done_at")
+        entry["done_at"] = prev["done_at"] if keep else entry["updated"]
+        entry["done_epoch"] = prev.get("done_epoch") if keep else entry["updated_epoch"]
     write_json(path, entry)
     with open(os.path.join(BOARD, f"{model_key(a.model)}.log"), "a") as fh:
         fh.write(json.dumps(entry) + "\n")
@@ -190,6 +212,66 @@ def status(a):
     raise SystemExit(0 if alive(c) else 1)
 
 
+def valid_settings(data):
+    """Return the valid settings in ``data``: known keys with in-range numbers.
+
+    Anything else (unknown or ``_``-prefixed keys, non-numbers, out-of-range
+    values, a non-object) is dropped, so the caller keeps its previous value.
+    """
+    if not isinstance(data, dict):
+        return {}
+    out = {}
+    for key, (low, high) in SETTING_RANGES.items():
+        v = data.get(key)
+        if isinstance(v, (int, float)) and not isinstance(v, bool) and low <= v <= high:
+            out[key] = v
+    return out
+
+
+def load_settings():
+    """Return the effective settings: defaults overlaid with the valid deployed values.
+
+    Deploys the default file to SETTINGS first if it is missing. An existing
+    file is never overwritten: only keys it lacks (new settings and their
+    ``_doc`` lines) are added, so every setting is there to edit.
+    """
+    defaults = valid_settings(load_json(DEFAULT_SETTINGS))
+    if not os.path.exists(SETTINGS) and os.path.exists(DEFAULT_SETTINGS):
+        os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+        with open(DEFAULT_SETTINGS) as src:
+            text = src.read()
+        tmp = f"{SETTINGS}.{os.getpid()}.tmp"
+        with open(tmp, "w") as fh:
+            fh.write(text)
+        os.replace(tmp, SETTINGS)
+    deployed = load_json(SETTINGS)
+    shipped = load_json(DEFAULT_SETTINGS)
+    if isinstance(deployed, dict) and isinstance(shipped, dict):
+        missing = [k for k in shipped if k not in deployed]
+        doc = deployed.get("_doc") if isinstance(deployed.get("_doc"), dict) else None
+        doc_missing = doc is not None and isinstance(shipped.get("_doc"), dict) and \
+            any(k not in doc for k in shipped["_doc"])
+        if missing or doc_missing:
+            for k in missing:
+                deployed[k] = shipped[k]
+            if doc_missing:
+                for k, v in shipped["_doc"].items():
+                    doc.setdefault(k, v)
+            write_json(SETTINGS, deployed)
+    return {**defaults, **valid_settings(deployed)}
+
+
+def settings(a):
+    """Print the effective settings as JSON, or just the value of ``--key``."""
+    eff = load_settings()
+    if a.key:
+        if a.key not in eff:
+            raise SystemExit(f"unknown setting: {a.key}")
+        print(eff[a.key])
+    else:
+        print(json.dumps(eff))
+
+
 def main():
     """Parse the command line and run the chosen subcommand."""
     ap = argparse.ArgumentParser()
@@ -231,6 +313,9 @@ def main():
     s = sub.add_parser("status")
     s.add_argument("--model", required=True)
     s.set_defaults(fn=status)
+    t = sub.add_parser("settings")
+    t.add_argument("--key", choices=sorted(SETTING_RANGES))
+    t.set_defaults(fn=settings)
     a = ap.parse_args()
     a.fn(a)
 

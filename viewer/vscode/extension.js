@@ -17,6 +17,8 @@ const { createMonitor } = require("./media/status");
 let panel = null;
 /** Every live webview showing the view (editor panel and activity-bar view). */
 const webviews = new Set();
+/** The activity-bar view once VS Code has resolved it, for its badge; or null. */
+let sidebarView = null;
 /** The running status monitor, or null. */
 let monitor = null;
 /** Status-bar item with the session summary. */
@@ -63,7 +65,22 @@ function updateStatusBar(snap) {
 function onSnapshot(snap) {
   latest = snap;
   updateStatusBar(snap);
+  updateBadge(snap);
   for (const webview of webviews) webview.postMessage({ type: "status", snapshot: snap });
+}
+
+/**
+ * Show the number of reporting sessions (those with a board entry) as a badge
+ * on the activity-bar icon, like Source Control's count of changes. No badge
+ * when none report.
+ * @param {object} snap Snapshot from the monitor.
+ */
+function updateBadge(snap) {
+  if (!sidebarView) return;
+  const reporting = snap.rows.filter((r) => r.entry).length;
+  sidebarView.badge = reporting
+    ? { value: reporting, tooltip: `${reporting} reporting agent session${reporting === 1 ? "" : "s"}` }
+    : undefined;
 }
 
 /**
@@ -109,7 +126,12 @@ class SidebarProvider {
    */
   resolveWebviewView(view) {
     const detach = attachWebview(view.webview, this.context);
-    view.onDidDispose(() => detach.dispose());
+    sidebarView = view;
+    if (latest) updateBadge(latest);
+    view.onDidDispose(() => {
+      detach.dispose();
+      if (sidebarView === view) sidebarView = null;
+    });
   }
 }
 
@@ -125,7 +147,6 @@ function startMonitor(context) {
     usagePy: cfg.get("usageScript") || path.join(context.extensionPath, "media", "usage.py"),
     python: cfg.get("python") || "python3",
     usageState: "vscode",
-    usageIntervalMs: Math.max(10, cfg.get("usageIntervalSeconds") || 30) * 1000,
     onChange: onSnapshot,
   });
 }
@@ -152,7 +173,10 @@ function html(webview, media) {
   <header>
     <h1>Agent Status</h1>
     <span id="meta">Loading…</span>
-    <label><input type="checkbox" id="showUnreported" checked> show unreported</label>
+    <div class="filters">
+      <label><input type="checkbox" id="showUnreported" checked> show unreported</label>
+      <label><input type="checkbox" id="hideDone"> hide done</label>
+    </div>
     <button id="refresh">Refresh</button>
   </header>
   <div id="monitors"></div>

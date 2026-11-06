@@ -96,10 +96,20 @@ function card(row) {
   const cwd = e.cwd || u.cwd || "";
   top.append(el("span", "project", cwd.split("/").pop() || "?"));
   if (row.stale) top.append(el("span", "tag", "stale entry"));
-  top.append(el("span", "sid", row.session.slice(0, 8)));
   node.append(top);
 
   node.append(el("div", "model", `${e.agent || u.agent || "?"} · ${e.model || u.model || "?"}`));
+
+  if (e.done_epoch) {
+    const at = new Date(e.done_epoch * 1000);
+    node.append(el("div", "doneat", `done at ${at.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}`));
+  }
+
+  const ident = el("div", "ident");
+  const name = nameOf(e);
+  if (name) ident.append(el("span", "k", "name "), el("span", "name", name), document.createTextNode(" · "));
+  ident.append(el("span", "k", "id "), el("span", "sid", row.session));
+  node.append(ident);
 
   const task = e.task || (u.title ? `(title) ${u.title}` : "");
   if (task) node.append(el("div", "task", task));
@@ -122,12 +132,30 @@ function card(row) {
     for (const item of e.items) list.append(el("li", null, item));
     node.append(list);
   }
-  if (Array.isArray(e.notes) && e.notes.length) {
+  const notes = (Array.isArray(e.notes) ? e.notes : []).filter((n) => !NAME_NOTE.test(n));
+  if (notes.length) {
     const list = el("ul", "notes");
-    for (const note of e.notes) list.append(el("li", null, note));
+    for (const note of notes) list.append(el("li", null, note));
     node.append(list);
   }
   return node;
+}
+
+/** Note that carries a session's reachable name, as published per SKILL.md: "name: <name>". */
+const NAME_NOTE = /^\s*name:\s*(.+?)\s*$/i;
+
+/**
+ * The name a session can be reached by: a `name` field, else a "name: …" note.
+ * @param {object} entry Board entry (may be empty).
+ * @returns {string|null} The name, or null when the session published none.
+ */
+function nameOf(entry) {
+  if (entry.name) return String(entry.name);
+  for (const note of Array.isArray(entry.notes) ? entry.notes : []) {
+    const m = NAME_NOTE.exec(note);
+    if (m) return m[1];
+  }
+  return null;
 }
 
 /**
@@ -137,8 +165,10 @@ function card(row) {
 function render(snap) {
   last = snap;
   const showUnreported = document.getElementById("showUnreported").checked;
+  const hideDone = document.getElementById("hideDone").checked;
   const rows = snap.rows
     .filter((r) => showUnreported || r.entry)
+    .filter((r) => !hideDone || stateOf(r) !== "done")
     .sort((a, b) => {
       const blocked = Number(Boolean(b.entry && b.entry.blocker)) - Number(Boolean(a.entry && a.entry.blocker));
       if (blocked) return blocked;
@@ -148,7 +178,8 @@ function render(snap) {
 
   const reported = snap.rows.filter((r) => r.entry).length;
   document.getElementById("meta").textContent =
-    `${snap.rows.length} sessions (${reported} reporting) · updated ${new Date(snap.at).toLocaleTimeString()}`;
+    `${snap.rows.length} sessions (${reported} reporting) · updated ${new Date(snap.at).toLocaleTimeString()}` +
+    (snap.settings ? ` · usage every ${snap.settings.viewerUsageSeconds} s, board every ${snap.settings.viewerBoardSeconds} s` : "");
 
   const monitors = document.getElementById("monitors");
   monitors.replaceChildren(
@@ -158,8 +189,12 @@ function render(snap) {
   );
 
   const error = document.getElementById("error");
-  error.hidden = !snap.usageError;
-  error.textContent = snap.usageError ? `usage.py failed: ${snap.usageError}` : "";
+  const problems = [
+    snap.usageError && `usage.py failed: ${snap.usageError}`,
+    snap.settingsError && `Settings: ${snap.settingsError} (keeping the previous rates)`,
+  ].filter(Boolean);
+  error.hidden = !problems.length;
+  error.textContent = problems.join(" · ");
 
   const cards = document.getElementById("cards");
   cards.replaceChildren(...rows.map(card));
@@ -169,3 +204,4 @@ function render(snap) {
 window.statusApi.onStatus(render);
 document.getElementById("refresh").addEventListener("click", async () => render(await window.statusApi.refresh()));
 document.getElementById("showUnreported").addEventListener("change", () => last && render(last));
+document.getElementById("hideDone").addEventListener("change", () => last && render(last));

@@ -8,12 +8,15 @@ the same view as the [Electron viewer](../README.md).
   with state, project, task, blocker, items left, ETA, projected and measured
   tokens, items and notes.
 - The **Agent Status** icon in the activity bar opens the same view in the
-  sidebar, with Refresh and "open in editor" buttons in its title bar.
+  sidebar, with Refresh and "open in editor" buttons in its title bar. Its
+  badge shows the number of reporting sessions, and nothing when there are
+  none.
 - The status bar shows how many sessions are working, waiting or blocked.
   Click it to open the panel.
 
-The board refreshes as soon as a file changes, and usage every 30 seconds
-(`agentStatus.usageIntervalSeconds`). The extension only reads the board.
+The board refreshes as soon as a file changes. The refresh rates come from
+`~/.agent-behaviors/session-status.json` (see the session-status skill) and
+change as soon as that file is saved. The extension only reads the board.
 Its `usage.py` deltas are kept in `.usage-vscode.json`.
 
 ## Settings
@@ -23,7 +26,6 @@ Its `usage.py` deltas are kept in `.usage-vscode.json`.
 | `agentStatus.boardDirectory` | `~/.agent-behaviors/status` | Board directory |
 | `agentStatus.usageScript` | bundled copy | Path to `usage.py` |
 | `agentStatus.python` | `python3` | Python 3 interpreter |
-| `agentStatus.usageIntervalSeconds` | `30` | Usage refresh period |
 | `agentStatus.showStatusBar` | `true` | Show the status-bar summary |
 
 ## Build and install

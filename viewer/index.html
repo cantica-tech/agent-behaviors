@@ -11,7 +11,10 @@
   <header>
     <h1>Agent Status</h1>
     <span id="meta">Loading…</span>
-    <label><input type="checkbox" id="showUnreported" checked> show unreported</label>
+    <div class="filters">
+      <label><input type="checkbox" id="showUnreported" checked> show unreported</label>
+      <label><input type="checkbox" id="hideDone"> hide done</label>
+    </div>
     <button id="refresh">Refresh</button>
   </header>
   <div id="monitors"></div>

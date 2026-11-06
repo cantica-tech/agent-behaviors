@@ -18,6 +18,49 @@ const path = require("path");
 const DEFAULT_BOARD = path.join(os.homedir(), ".agent-behaviors", "status");
 /** Minutes without a heartbeat after which a <model>.status session is gone (as in board.py). */
 const STALE_MINUTES = 15;
+/** Deployed settings file of the session-status skill (see session-status/settings.json). */
+const DEFAULT_SETTINGS_FILE = path.join(os.homedir(), ".agent-behaviors", "session-status.json");
+/** Settings used when the file is missing or a value is invalid (same as the skill's settings.json). */
+const DEFAULT_SETTINGS = {
+  statusSessionSeconds: 300,
+  viewerUsageSeconds: 30,
+  viewerBoardSeconds: 5,
+  doneVisibleHours: 12,
+};
+/** Allowed range (inclusive) of each setting, as in board.py; values outside it are ignored. */
+const SETTING_RANGES = {
+  statusSessionSeconds: [60, 3600],
+  viewerUsageSeconds: [10, 3600],
+  viewerBoardSeconds: [1, 300],
+  doneVisibleHours: [0, 720],
+};
+
+/**
+ * When a board entry reached "done", in epoch seconds: its done_epoch, else
+ * (entries published before done_at existed) its last update.
+ * @param {object} e Board entry.
+ * @returns {number|null} Epoch seconds, or null when the entry is not done.
+ */
+function doneEpoch(e) {
+  if (!e || e.state !== "done") return null;
+  return e.done_epoch || e.updated_epoch || null;
+}
+
+/**
+ * Keep the valid settings of a parsed settings file: known keys with
+ * in-range numbers. Anything else falls back to its default.
+ * @param {*} data Parsed JSON.
+ * @returns {object} Defaults overlaid with the valid values.
+ */
+function validSettings(data) {
+  const out = { ...DEFAULT_SETTINGS };
+  if (!data || typeof data !== "object" || Array.isArray(data)) return out;
+  for (const [key, [low, high]] of Object.entries(SETTING_RANGES)) {
+    const v = data[key];
+    if (typeof v === "number" && Number.isFinite(v) && v >= low && v <= high) out[key] = v;
+  }
+  return out;
+}
 
 /**
  * Parse a JSON file.
@@ -95,8 +138,9 @@ function parseUsage(stdout) {
  * @param {string} [options.board] Board directory (default ~/.agent-behaviors/status).
  * @param {string} [options.usageState] usage.py --state name, one per caller, so deltas stay apart.
  * @param {string} [options.python] Python interpreter (default "python3").
- * @param {number} [options.usageIntervalMs] usage.py period (default 30 s).
- * @param {number} [options.boardIntervalMs] Fallback board poll (default 5 s).
+ * @param {string} [options.settingsFile] Settings file (default ~/.agent-behaviors/session-status.json).
+ *   Its viewerUsageSeconds and viewerBoardSeconds set the refresh rates; it is
+ *   watched, and every valid change applies at once, without a restart.
  * @returns {{snapshot: () => object, refresh: () => void, dispose: () => void}}
  *   `snapshot` returns the current state, `refresh` re-runs usage.py now,
  *   `dispose` stops every watcher and timer.
@@ -111,13 +155,78 @@ function createMonitor(options) {
   let pushTimer = null;
   let watcher = null;
   let disposed = false;
+  const settingsFile = options.settingsFile || DEFAULT_SETTINGS_FILE;
+  let settings = { ...DEFAULT_SETTINGS };
+  let settingsError = null;
+  let settingsMtime = -1;
+  let settingsWatcher = null;
+  let boardTimer = null;
+  let usageTimer = null;
+
+  /**
+   * Re-read the settings file if it changed. A file that is not valid JSON
+   * (e.g. half-written) is ignored and the current settings are kept.
+   * @returns {boolean} True when the refresh rates changed.
+   */
+  function reloadSettings() {
+    let mtime = 0;
+    try {
+      mtime = fs.statSync(settingsFile).mtimeMs;
+    } catch {
+      mtime = 0; // missing: defaults
+    }
+    if (mtime === settingsMtime) return false;
+    settingsMtime = mtime;
+    let next = { ...DEFAULT_SETTINGS };
+    if (mtime) {
+      try {
+        next = validSettings(JSON.parse(fs.readFileSync(settingsFile, "utf8")));
+        settingsError = null;
+      } catch (err) {
+        settingsError = `${path.basename(settingsFile)} ignored: ${err.message}`;
+        return false;
+      }
+    } else {
+      settingsError = null;
+    }
+    const changed = JSON.stringify(next) !== JSON.stringify(settings);
+    settings = next;
+    return changed;
+  }
+
+  /** (Re)start the periodic timers with the current settings. */
+  function schedule() {
+    clearInterval(boardTimer);
+    clearInterval(usageTimer);
+    boardTimer = setInterval(tick, settings.viewerBoardSeconds * 1000);
+    usageTimer = setInterval(refresh, settings.viewerUsageSeconds * 1000);
+  }
+
+  /** Board poll: pick up settings changes too, then push a snapshot. */
+  function tick() {
+    if (reloadSettings()) schedule();
+    push();
+  }
 
   /** Join board entries with measured usage into one row per session. */
   function snapshot() {
     const { entries, monitors } = readBoard(board);
     const rows = new Map();
-    for (const e of entries) rows.set(e.session, { session: e.session, entry: e, usage: null });
+    // Done sessions are shown for doneVisibleHours after reaching done, then
+    // dropped entirely (their usage too, so they don't come back as unreported).
+    const cutoff = Date.now() / 1000 - settings.doneVisibleHours * 3600;
+    const expired = new Set();
+    for (const e of entries) {
+      const done = doneEpoch(e);
+      if (done !== null && done <= cutoff) {
+        expired.add(e.session);
+        continue;
+      }
+      if (done !== null) e.done_epoch = done;
+      rows.set(e.session, { session: e.session, entry: e, usage: null });
+    }
     for (const [sid, u] of usage) {
+      if (expired.has(sid)) continue;
       const row = rows.get(sid) || { session: sid, entry: null, usage: null };
       row.usage = u;
       rows.set(sid, row);
@@ -130,7 +239,15 @@ function createMonitor(options) {
         e && u && u.last && e.updated_epoch && Date.parse(u.last) / 1000 > e.updated_epoch + 60,
       );
     }
-    return { board, at: new Date().toISOString(), rows: [...rows.values()], monitors, usageError };
+    return {
+      board,
+      at: new Date().toISOString(),
+      rows: [...rows.values()],
+      monitors,
+      usageError,
+      settings: { ...settings },
+      settingsError,
+    };
   }
 
   /** Send a snapshot to the host. */
@@ -170,8 +287,19 @@ function createMonitor(options) {
   } catch {
     /* the directory may not exist yet; polling picks it up */
   }
-  const boardTimer = setInterval(push, options.boardIntervalMs || 5_000);
-  const usageTimer = setInterval(refresh, options.usageIntervalMs || 30_000);
+  try {
+    // Watch the folder, not the file: editors and board.py replace it atomically.
+    settingsWatcher = fs.watch(path.dirname(settingsFile), (_event, name) => {
+      if (!name || name === path.basename(settingsFile)) {
+        if (reloadSettings()) schedule();
+        schedulePush();
+      }
+    });
+  } catch {
+    /* folder missing; the board poll re-checks the file */
+  }
+  reloadSettings();
+  schedule();
   refresh();
 
   return {
@@ -183,8 +311,9 @@ function createMonitor(options) {
       clearInterval(boardTimer);
       clearInterval(usageTimer);
       if (watcher) watcher.close();
+      if (settingsWatcher) settingsWatcher.close();
     },
   };
 }
 
-module.exports = { createMonitor, readBoard, parseUsage, DEFAULT_BOARD };
+module.exports = { createMonitor, readBoard, parseUsage, validSettings, DEFAULT_BOARD, DEFAULT_SETTINGS_FILE };
