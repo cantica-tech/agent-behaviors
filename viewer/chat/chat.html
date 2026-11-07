@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self'">
+  <title>Chat</title>
+  <link rel="stylesheet" href="../shared/styles.css">
+  <link rel="stylesheet" href="chat.css">
+</head>
+<body class="chat">
+  <header>
+    <h1>Chat</h1>
+    <span id="meta">Loading…</span>
+    <label>Permissions
+      <select id="mode"></select>
+    </label>
+  </header>
+  <main id="log"></main>
+  <footer>
+    <div id="chips"></div>
+    <div id="suggest" hidden></div>
+    <textarea id="input" rows="3" placeholder="Message the agent… (/ for commands, @ to add a file as context, Enter to send, Shift+Enter for a new line)"></textarea>
+    <div class="bar">
+      <button id="attach">Attach…</button>
+      <span id="state" class="k"></span>
+      <button id="stop">Stop</button>
+      <button id="send" class="primary">Send</button>
+    </div>
+  </footer>
+  <script src="chat.js"></script>
+</body>
+</html>

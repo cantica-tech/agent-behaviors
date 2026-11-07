@@ -84,6 +84,30 @@ function updateBadge(snap) {
 }
 
 /**
+ * Open the agent's own chat in VS Code, if a chat command is configured for
+ * it (agentStatus.chatCommands) and installed. A command whose config says
+ * `withSession` gets the session id, so it reopens that very session
+ * (Claude Code does); the others open their chat panel.
+ * @param {string} session Session id.
+ * @returns {Promise<{ok: boolean, note?: string}|null>} Null when no chat applies.
+ */
+async function openChat(session) {
+  const info = monitor && monitor.sessionAgent(session);
+  if (!info) return null;
+  const map = config().get("chatCommands") || {};
+  const key = Object.keys(map).find((k) => {
+    const needle = k.toLowerCase();
+    return (info.agent || "").toLowerCase().includes(needle) || (info.model || "").toLowerCase().includes(needle);
+  });
+  const spec = key && map[key];
+  if (!spec || !spec.command) return null;
+  const available = await vscode.commands.getCommands(true);
+  if (!available.includes(spec.command)) return null;
+  await vscode.commands.executeCommand(spec.command, ...(spec.withSession ? [session] : []));
+  return { ok: true, note: spec.withSession ? "opened in its chat" : "opened its chat panel" };
+}
+
+/**
  * Open a session so the user can type to it: a terminal attached to a
  * background Claude Code session, else its project folder (a new window,
  * unless it is already open here).
@@ -91,6 +115,8 @@ function updateBadge(snap) {
  * @returns {Promise<{ok: boolean, error?: string}>} The outcome.
  */
 async function openSession(session) {
+  const chat = await openChat(session);
+  if (chat) return chat;
   const target = monitor && monitor.sessionTarget(session);
   if (!target) return { ok: false, error: "this session cannot be opened" };
   if (target.kind === "attach") {

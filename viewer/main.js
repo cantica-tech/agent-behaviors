@@ -10,6 +10,7 @@ const { app, BrowserWindow, clipboard, ipcMain, nativeImage, shell } = require("
 const { execFile } = require("child_process");
 const path = require("path");
 const { createMonitor } = require("./shared/status");
+const { openChatWindow } = require("./chat/chat-main");
 
 /** Measured-usage script shipped with the session-status skill. */
 const USAGE_PY = path.join(__dirname, "..", "session-status", "scripts", "usage.py");
@@ -61,6 +62,12 @@ ipcMain.handle("copy-text", (_event, text) => {
 ipcMain.handle("send-message", (_event, session, text) => monitor.sendMessage(session, text));
 
 ipcMain.handle("open-session", async (_event, session) => {
+  // Claude Code sessions open in a chat window (resuming, forking when live).
+  const info = monitor.sessionAgent(session);
+  if (info && info.agent === "claude-code") {
+    return openChatWindow({ sessionId: session, cwd: info.cwd, live: info.live,
+      title: (info.cwd || "").split("/").pop() });
+  }
   const target = monitor.sessionTarget(session);
   if (!target) return { ok: false, error: "this session cannot be opened" };
   if (target.kind === "attach") {

@@ -543,6 +543,20 @@ function createMonitor(options) {
       return row ? openTarget(row) : null;
     },
     /**
+     * Agent, model, folder and liveness of a session of the latest snapshot.
+     * @param {string} sid Session id.
+     * @returns {{agent: string|null, model: string|null, cwd: string|null, live: boolean}|null}
+     *   Null when the session is not in the latest snapshot.
+     */
+    sessionAgent(sid) {
+      const row = known.get(sid);
+      if (!row) return null;
+      const e = row.entry || {};
+      const u = row.usage || {};
+      return { agent: e.agent || u.agent || null, model: e.model || u.model || null,
+        cwd: e.cwd || u.cwd || null, live: Boolean(row.liveNow) };
+    },
+    /**
      * Whether ``p`` is a context or memory path of the latest snapshot that
      * still exists; hosts open only such paths.
      * @param {string} p Path asked for by the page.

@@ -2,7 +2,7 @@
   "name": "agent-status",
   "displayName": "Agent Status",
   "description": "Live status of the agent sessions on this machine, from the agent-behaviors session-status board.",
-  "version": "0.8.1",
+  "version": "0.9.1",
   "publisher": "canticatech",
   "icon": "media/icon.png",
   "license": "UNLICENSED",
@@ -64,6 +64,42 @@
           "type": "boolean",
           "default": true,
           "description": "Show a summary of the agent sessions in the status bar."
+        },
+        "agentStatus.chatCommands": {
+          "type": "object",
+          "description": "Chat that Open session opens, by agent: a key matched (case-insensitive, substring) against the session's agent or model, mapped to the VS Code command that opens its chat. withSession passes the session id so the command reopens that session. Agents without an entry, or whose command is not installed, fall back to a terminal (background Claude Code) or their project folder.",
+          "default": {
+            "claude": {
+              "command": "claude-vscode.editor.open",
+              "withSession": true
+            },
+            "copilot": {
+              "command": "workbench.action.chat.open"
+            },
+            "mistral": {
+              "command": "mistral-vibe-code.open"
+            },
+            "vibe": {
+              "command": "mistral-vibe-code.open"
+            },
+            "codex": {
+              "command": "chatgpt.openSidebar"
+            }
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "command": {
+                "type": "string"
+              },
+              "withSession": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "command"
+            ]
+          }
         }
       }
     },

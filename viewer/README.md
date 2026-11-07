@@ -18,8 +18,15 @@ session) and its memory; when one is gone or unknown, the card says so.
 session's inbox (`~/.agent-behaviors/status/inbox/<session>/`), and the agent
 reads it the next time it publishes its status. The card shows messages
 still waiting and when the last one was read. **Open session** takes you to
-the agent instead, to type to it directly: Terminal with `claude attach` for
-a background Claude Code session, otherwise its project folder.
+the agent instead, to type to it directly. For a Claude Code session it opens
+a **chat window**: your messages continue that session (`claude -p --resume`
+with streaming JSON), with `/` for its slash commands, `@` to add a file of
+the project as context, **Attach…** for documents and images, **Stop**, and a
+Permissions menu (`ask` denies tools that need approval; pick `acceptEdits`,
+`plan`, … to allow more). If the session is still live elsewhere, the first
+message forks it into a new session, so the two never write one
+conversation. Other agents: Terminal with `claude attach` for a background
+Claude Code session, otherwise the project folder.
 
 A live session that doesn't report (active in the last 15 minutes, or
 running per `claude agents`) also gets **Onboard**: it copies a

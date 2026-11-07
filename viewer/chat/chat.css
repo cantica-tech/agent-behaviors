@@ -1,0 +1,29 @@
+/* Chat window: log above, composer below; colours from ../shared/styles.css. */
+body.chat { display: flex; flex-direction: column; height: 100vh; }
+body.chat main { display: block; flex: 1; overflow-y: auto; padding: 14px 18px; }
+body.chat header label { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+body.chat select { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 2px 6px; }
+.msg { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card);
+  white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.user { border-left: 4px solid var(--done); }
+.msg.assistant { border-left: 4px solid var(--working); }
+.msg pre { background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; overflow-x: auto; white-space: pre; margin: 6px 0; }
+.msg .files { color: var(--muted); font-size: 12px; margin-top: 4px; }
+details.tool { margin: 6px 0; font-size: 12px; color: var(--muted); }
+details.tool pre { white-space: pre-wrap; max-height: 260px; overflow-y: auto; }
+details.tool.error summary { color: var(--warn); }
+.result { font-size: 12px; color: var(--muted); margin: -4px 0 12px; }
+.result.error, .status.error { color: var(--warn); }
+.status { font-size: 12px; color: var(--muted); font-style: italic; margin: 0 0 10px; }
+body.chat footer { border-top: 1px solid var(--line); padding: 10px 18px 14px; background: var(--bg); position: relative; }
+#input { font: inherit; width: 100%; resize: vertical; color: var(--text); background: var(--card);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+footer .bar { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+footer .bar #state { flex: 1; }
+#chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.chip { font-size: 12px; border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; background: var(--card); }
+.chip button { border: 0; background: none; padding: 0 0 0 6px; cursor: pointer; color: var(--muted); }
+#suggest { position: absolute; bottom: 100%; left: 18px; right: 18px; max-height: 240px; overflow-y: auto;
+  background: var(--card); border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 4px 16px #0003; }
+#suggest div { padding: 4px 10px; font-size: 13px; cursor: pointer; font-family: ui-monospace, Menlo, monospace; }
+#suggest div.on, #suggest div:hover { background: var(--bg); }
