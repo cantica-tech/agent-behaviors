@@ -98,8 +98,15 @@ def claim_path(model):
 
 
 def publish(a):
-    """Write this session's entry and append it to its model's activity log."""
+    """Write this session's entry and append it to its model's activity log.
+
+    Also checks the settings: prints the entry's path, then ``settings`` and
+    the values in force, then one ``settings changed`` line per value that
+    differs from what this session saw at its previous publish. The values
+    seen are kept in the entry (``settings_seen``) for the next comparison.
+    """
     os.makedirs(BOARD, exist_ok=True)
+    current = load_settings()
     entry = dict(session=a.session, agent=a.agent, model=a.model,
                  cwd=a.cwd or os.getcwd(), state=a.state, task=a.task,
                  items_left=a.items_left, items=a.items or [], eta=a.eta,
@@ -107,9 +114,10 @@ def publish(a):
                  notes=a.note or [],
                  updated=now_iso(), updated_epoch=time.time())
     path = os.path.join(BOARD, f"{a.session}.json")
+    prev = load_json(path) or {}
+    entry["settings_seen"] = current
     # done_at: when the session first reached "done"; kept while it stays done.
     if a.state == "done":
-        prev = load_json(path) or {}
         keep = prev.get("state") == "done" and prev.get("done_at")
         entry["done_at"] = prev["done_at"] if keep else entry["updated"]
         entry["done_epoch"] = prev.get("done_epoch") if keep else entry["updated_epoch"]
@@ -117,6 +125,12 @@ def publish(a):
     with open(os.path.join(BOARD, f"{model_key(a.model)}.log"), "a") as fh:
         fh.write(json.dumps(entry) + "\n")
     print(path)
+    print("settings " + json.dumps(current))
+    seen = prev.get("settings_seen")
+    if isinstance(seen, dict):
+        for key, value in current.items():
+            if key in seen and seen[key] != value:
+                print(f"settings changed: {key} {seen[key]} -> {value}")
 
 
 def request(a):

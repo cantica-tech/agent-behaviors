@@ -73,6 +73,13 @@ python3 <skill>/scripts/board.py publish --session <id> --agent <agent> \
   tokens is your estimate of the tokens still to spend, based on what similar
   steps have cost so far. Say `unknown` in `--eta` rather than guess.
 - Publish only your own entry. Never write another session's entry.
+- **Check the settings every time you publish.** `publish` prints the
+  [settings](#settings) in force (`settings {...}`), then a
+  `settings changed: <key> <old> -> <new>` line for each value that changed
+  since your previous publish. Read those lines and apply any change from
+  then on: `doneVisibleHours` to the reports you write, and
+  `statusSessionSeconds` to your cycle if you are a `<model>.status`
+  session. Don't rely on values you read earlier in the session.
 
 ### Send your activities to `<model>.status`
 
