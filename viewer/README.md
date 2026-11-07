@@ -22,7 +22,7 @@ the agent instead, to type to it directly: Terminal with `claude attach` for
 a background Claude Code session, otherwise its project folder.
 
 A live session that doesn't report (active in the last 15 minutes, or
-running per `claude agents`) also gets **Start reporting**: it copies a
+running per `claude agents`) also gets **Onboard**: it copies a
 prompt asking the agent to load the session-status skill and publish under
 its own session id, and opens the session so you can paste it there (an
 unreported agent doesn't read the inbox).

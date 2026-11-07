@@ -2,7 +2,7 @@
   "name": "agent-status",
   "displayName": "Agent Status",
   "description": "Live status of the agent sessions on this machine, from the agent-behaviors session-status board.",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "publisher": "canticatech",
   "icon": "media/icon.png",
   "license": "UNLICENSED",

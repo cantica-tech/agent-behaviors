@@ -254,7 +254,7 @@ function createMonitor(options) {
   let usageTimer = null;
   /** Context and memory paths in the latest snapshot: the only ones openPath may open. */
   const paths = new Set();
-  /** The session-status SKILL.md that "Start reporting" asks agents to load. */
+  /** The session-status SKILL.md that "Onboard" asks agents to load. */
   const skillPath = options.skillPath || defaultSkillPath();
   /** Rows of the latest snapshot by session id: the only sessions that can be messaged or opened. */
   const known = new Map();

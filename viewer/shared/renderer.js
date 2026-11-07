@@ -228,7 +228,7 @@ function startReportingPrompt(skillPath, sid) {
 }
 
 /**
- * "Start reporting" button, shown only for live sessions that don't report.
+ * "Onboard" button, shown only for live sessions that don't report.
  * Such a session doesn't read the inbox, so the prompt can't be delivered
  * there: the button copies it to the clipboard and opens the session for the
  * user to paste it.
@@ -237,7 +237,7 @@ function startReportingPrompt(skillPath, sid) {
  * @returns {HTMLElement} The button.
  */
 function startReportingButton(row, draft) {
-  const button = el("button", "small primary", "Start reporting");
+  const button = el("button", "small primary", "Onboard");
   const skill = (last && last.skillPath) || null;
   button.disabled = !skill || !row.open;
   button.title = !skill ? "session-status skill not found (~/.agent-behaviors/skills/session-status)" :
