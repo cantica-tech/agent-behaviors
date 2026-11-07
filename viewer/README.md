@@ -46,6 +46,23 @@ deltas are kept in `.usage-viewer.json`, apart from everyone else's.
 The same view is available inside VS Code: see [vscode/](vscode/README.md).
 Both share the status monitor, renderer and styles in [shared/](shared).
 
+## Tools the skills use
+
+Every tool a skill relies on must be allowed for the agents: an agent has to
+be able to run it without being blocked or asked each time, or the skill
+can't do its job. Today that means:
+
+| Tool | Used by |
+| --- | --- |
+| [mado](https://github.com/akiomik/mado) | [coding/markdown](../coding/markdown/SKILL.md) |
+| [Taplo](https://github.com/tamasfe/taplo) (`taplo`) | [coding/toml](../coding/toml/SKILL.md) |
+
+When a skill is added or starts using a new tool, add the tool to this list
+and allow it in every agent's permissions (for Claude Code, e.g.
+`Bash(mado *)` and `Bash(taplo *)` in `~/.claude/settings.json`). The
+[Tools](../README.md#tools) section of the main README says how to install
+them.
+
 ## Tests
 
 ```sh

@@ -48,7 +48,7 @@ Keep one entry on the shared board, `~/.agent-behaviors/status/<session>.json`.
 Publishing also appends the entry to `~/.agent-behaviors/status/<model>.log`,
 the activity log of your model:
 
-```
+```sh
 python3 <skill>/scripts/board.py publish --session <id> --agent <agent> \
   --model <exact model id> --state working|idle|waiting|done --task "<repo, item/ID, step>" \
   --items-left <n> --items "<item>" "<item>" --eta "<e.g. 20 min>" \
@@ -162,7 +162,8 @@ line in `<model>.log`.
    it is fresh when `board.py status --model <model>` exits 0 and the file is
    newer than the last line of `<model>.log`. Report fresh models from their
    file, and say so. Run the steps below for the rest.
-1. **Ask for fresh entries:** `python3 <skill>/scripts/board.py request --from <your id>`.
+1. **Ask for fresh entries:**
+   `python3 <skill>/scripts/board.py request --from <your id>`.
    If your agent can message peer sessions directly (e.g. Claude Code's
    `ListAgents` + `SendMessage`), also send each peer one short request to
    run Role 1. Send at most one request per peer per report, and none to a
@@ -196,8 +197,9 @@ line in `<model>.log`.
 
    Mark self-reported values and say how old they are. Flag stale entries
    (older than the session's last activity), except for `done` sessions,
-   which are never stale. Put blockers and pending user
-   decisions first, then notes (e.g. a missing tool). Keep it short: this may run every few minutes.
+   which are never stale. Put blockers and pending user decisions first,
+   then notes (e.g. a missing tool). Keep it short: this may run every few
+   minutes.
 
 ## Rules
 
