@@ -6,7 +6,7 @@
   const vscode = acquireVsCodeApi();
   /** Subscribers to status snapshots. */
   const listeners = [];
-  /** Pending saveSettings calls, by request id. */
+  /** Pending requests to the extension, by request id. */
   const pending = new Map();
   /** Next request id. */
   let nextId = 1;
@@ -14,11 +14,23 @@
   window.addEventListener("message", (event) => {
     const msg = event.data;
     if (msg && msg.type === "status") for (const fn of listeners) fn(msg.snapshot);
-    if (msg && msg.type === "saveResult" && pending.has(msg.id)) {
+    if (msg && msg.type === "result" && pending.has(msg.id)) {
       pending.get(msg.id)(msg.result);
       pending.delete(msg.id);
     }
   });
+
+  /**
+   * Send a request to the extension and wait for its result.
+   * @param {string} type Request type.
+   * @param {object} payload Request fields.
+   * @returns {Promise<object>} The result the extension sends back.
+   */
+  function request(type, payload) {
+    const id = nextId++;
+    vscode.postMessage({ type, id, ...payload });
+    return new Promise((resolve) => pending.set(id, resolve));
+  }
 
   window.statusApi = {
     /**
@@ -35,9 +47,32 @@
      * @returns {Promise<{ok: boolean, error?: string}>} The outcome.
      */
     saveSettings(values) {
-      const id = nextId++;
-      vscode.postMessage({ type: "saveSettings", id, values });
-      return new Promise((resolve) => pending.set(id, resolve));
+      return request("saveSettings", { values });
+    },
+    /**
+     * Leave a prompt in a session's inbox.
+     * @param {string} session Session id.
+     * @param {string} text Prompt.
+     * @returns {Promise<{ok: boolean, error?: string}>} The outcome.
+     */
+    sendMessage(session, text) {
+      return request("sendMessage", { session, text });
+    },
+    /**
+     * Open a session so the user can type to it (terminal attach, or its folder).
+     * @param {string} session Session id.
+     * @returns {Promise<{ok: boolean, error?: string}>} The outcome.
+     */
+    openSession(session) {
+      return request("openSession", { session });
+    },
+    /**
+     * Copy text to the clipboard.
+     * @param {string} text Text to copy.
+     * @returns {Promise<boolean>} True when copied.
+     */
+    copyText(text) {
+      return request("copyText", { text });
     },
     /**
      * Open a session's context folder or memory. The extension opens only

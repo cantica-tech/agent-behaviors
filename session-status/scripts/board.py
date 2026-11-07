@@ -8,6 +8,8 @@ Everything lives in ~/.agent-behaviors/status/:
   <model>.md                the latest report, written by the <model>.status session
   .<model>.status.json      claim + heartbeat of the <model>.status session
   .request.json             the latest "please publish now" request
+  inbox/<session>/*.json    messages for a session (e.g. sent from a viewer);
+                            read ones move to inbox/<session>/read/
 
 Settings live in ~/.agent-behaviors/session-status.json, deployed from the
 skill's settings.json on first use and re-read on every call.
@@ -27,6 +29,12 @@ skill's settings.json on first use and re-read on every call.
   board.py heartbeat --model M --by NAME
                                      the <model>.status session is alive
   board.py status --model M          print the <model>.status claim; exit 0 if alive
+  board.py send --to SESSION --text TEXT [--from NAME]
+                                     leave a message in a session's inbox
+  board.py inbox --session ID [--peek]
+                                     print your unread messages and mark them
+                                     read (--peek: leave them unread); exit 0
+                                     if there were any, else 1
   board.py settings [--key K]        print the effective settings (or one value),
                                      deploying the default file if it is missing
 """
@@ -44,6 +52,12 @@ BOARD = os.path.expanduser("~/.agent-behaviors/status")
 REQUEST = os.path.join(BOARD, ".request.json")
 #: Minutes without a heartbeat after which a <model>.status session counts as gone.
 STALE_MINUTES = 15
+#: Inbox root: one folder per session holding its unread messages.
+INBOX = os.path.join(BOARD, "inbox")
+#: Characters allowed in a session id used as an inbox folder name.
+SAFE_ID = re.compile(r"^[A-Za-z0-9._-]{1,200}$")
+#: Longest message accepted, in characters.
+MAX_MESSAGE = 8000
 #: Deployed settings file: the copy users edit; re-read on every call.
 SETTINGS = os.path.expanduser("~/.agent-behaviors/session-status.json")
 #: Default settings shipped with the skill, deployed when SETTINGS is missing.
@@ -126,11 +140,68 @@ def publish(a):
         fh.write(json.dumps(entry) + "\n")
     print(path)
     print("settings " + json.dumps(current))
+    waiting = len(unread(a.session)) if SAFE_ID.match(a.session) else 0
+    if waiting:
+        print(f"inbox: {waiting} unread message(s); read them with: "
+              f"board.py inbox --session {a.session}")
     seen = prev.get("settings_seen")
     if isinstance(seen, dict):
         for key, value in current.items():
             if key in seen and seen[key] != value:
                 print(f"settings changed: {key} {seen[key]} -> {value}")
+
+
+def inbox_dir(session):
+    """Return the inbox folder of ``session``; refuse ids unsafe as a folder name."""
+    if not SAFE_ID.match(session or "") or session in (".", ".."):
+        raise SystemExit(f"invalid session id: {session!r}")
+    return os.path.join(INBOX, session)
+
+
+def unread(session):
+    """Return the unread messages of ``session``, oldest first, with their file paths."""
+    folder = inbox_dir(session)
+    out = []
+    for f in sorted(glob.glob(os.path.join(folder, "*.json"))):
+        m = load_json(f)
+        if isinstance(m, dict) and m.get("text"):
+            out.append((f, m))
+    return out
+
+
+def send(a):
+    """Leave a message in a session's inbox; it reads it with ``inbox``."""
+    text = (a.text or "").strip()
+    if not text:
+        raise SystemExit("empty message")
+    if len(text) > MAX_MESSAGE:
+        raise SystemExit(f"message longer than {MAX_MESSAGE} characters")
+    folder = inbox_dir(a.to)
+    os.makedirs(folder, exist_ok=True)
+    epoch = time.time()
+    mid = f"{int(epoch * 1000)}-{os.getpid()}"
+    msg = dict(id=mid, to=a.to, sender=a.from_ or "unknown", text=text,
+               at=now_iso(), epoch=epoch)
+    path = os.path.join(folder, f"{mid}.json")
+    write_json(path, msg)
+    print(path)
+
+
+def inbox(a):
+    """Print this session's unread messages (JSON lines) and mark them read.
+
+    Exit 0 if there were any, 1 if none. With ``--peek``, leave them unread.
+    """
+    msgs = unread(a.session)
+    read_dir = os.path.join(inbox_dir(a.session), "read")
+    for f, m in msgs:
+        m["read_at"] = now_iso()
+        print(json.dumps(m))
+        if not a.peek:
+            os.makedirs(read_dir, exist_ok=True)
+            write_json(os.path.join(read_dir, os.path.basename(f)), m)
+            os.remove(f)
+    raise SystemExit(0 if msgs else 1)
 
 
 def request(a):
@@ -327,6 +398,15 @@ def main():
     s = sub.add_parser("status")
     s.add_argument("--model", required=True)
     s.set_defaults(fn=status)
+    m = sub.add_parser("send")
+    m.add_argument("--to", required=True)
+    m.add_argument("--text", required=True)
+    m.add_argument("--from", dest="from_", default="")
+    m.set_defaults(fn=send)
+    i = sub.add_parser("inbox")
+    i.add_argument("--session", required=True)
+    i.add_argument("--peek", action="store_true")
+    i.set_defaults(fn=inbox)
     t = sub.add_parser("settings")
     t.add_argument("--key", choices=sorted(SETTING_RANGES))
     t.set_defaults(fn=settings)

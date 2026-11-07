@@ -99,3 +99,15 @@ body.vscode-light button, body.vscode-dark button, body.vscode-high-contrast but
   .setting { grid-template-columns: 1fr 80px 14px; }
   .setting .k:last-child { grid-column: 2 / 4; }
 }
+
+/* Messaging: inbox line, "Message…" button and composer on each card. */
+.messaging { margin-top: 8px; }
+.msgbar { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+button.small { font-size: 12px; padding: 2px 8px; }
+button.primary { border-color: var(--working); }
+.msgbar .waiting { color: var(--waiting); font-weight: 600; }
+.composer { margin-top: 6px; display: grid; gap: 6px; }
+.composer textarea { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 6px; resize: vertical; width: 100%; }
+.composer .actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+.composer .note { font-style: italic; }

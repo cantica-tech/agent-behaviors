@@ -35,6 +35,50 @@ const SETTING_RANGES = {
   doneVisibleHours: [0, 720],
 };
 
+/** Characters allowed in a session id used as an inbox folder name (as in board.py). */
+const SAFE_ID = /^[A-Za-z0-9._-]{1,200}$/;
+/** Longest message accepted, in characters (as in board.py). */
+const MAX_MESSAGE = 8000;
+
+/**
+ * Inbox state of a session: unread messages, and when the last one was read.
+ * @param {string} board Board directory.
+ * @param {string} sid Session id.
+ * @returns {{unread: number, lastRead: string|null}} Counts from inbox/<sid>/.
+ */
+function inboxState(board, sid) {
+  if (!SAFE_ID.test(sid)) return { unread: 0, lastRead: null };
+  const dir = path.join(board, "inbox", sid);
+  let unread = 0;
+  let lastRead = null;
+  try {
+    unread = fs.readdirSync(dir).filter((n) => n.endsWith(".json")).length;
+  } catch {
+    /* no inbox yet */
+  }
+  try {
+    const read = fs.readdirSync(path.join(dir, "read")).filter((n) => n.endsWith(".json")).sort();
+    if (read.length) lastRead = (readJson(path.join(dir, "read", read[read.length - 1])) || {}).read_at || null;
+  } catch {
+    /* nothing read yet */
+  }
+  return { unread, lastRead };
+}
+
+/** Minutes since its last activity within which a session counts as live. */
+const LIVE_MINUTES = 15;
+/** The session-status skill, resolved through the ~/.agent-behaviors/skills link to its real path. */
+function defaultSkillPath() {
+  try {
+    return fs.realpathSync(path.join(os.homedir(), ".agent-behaviors", "skills", "session-status", "SKILL.md"));
+  } catch {
+    return null;
+  }
+}
+
+/** Where the `claude` command may be, for `claude agents --json`. */
+const CLAUDE_CANDIDATES = ["claude", path.join(os.homedir(), ".local", "bin", "claude")];
+
 /**
  * Find a session's context folder and memory by its id, for sessions with a
  * board entry but no usage record (usage.py reports paths for the others).
@@ -210,6 +254,12 @@ function createMonitor(options) {
   let usageTimer = null;
   /** Context and memory paths in the latest snapshot: the only ones openPath may open. */
   const paths = new Set();
+  /** The session-status SKILL.md that "Start reporting" asks agents to load. */
+  const skillPath = options.skillPath || defaultSkillPath();
+  /** Rows of the latest snapshot by session id: the only sessions that can be messaged or opened. */
+  const known = new Map();
+  /** Running Claude Code sessions from `claude agents --json`, by session id. */
+  let claudeSessions = new Map();
 
   /**
    * Re-read the settings file if it changed. A file that is not valid JSON
@@ -328,9 +378,16 @@ function createMonitor(options) {
       rows.set(sid, row);
     }
     paths.clear();
+    known.clear();
     for (const row of rows.values()) {
       const e = row.entry;
       const u = row.usage;
+      known.set(row.session, row);
+      row.inbox = inboxState(board, row.session);
+      row.live = claudeSessions.get(row.session) || null;
+      row.open = openTarget(row);
+      // Live: active in the last LIVE_MINUTES, or listed by `claude agents` as running.
+      row.liveNow = Boolean(row.live) || Boolean(u && u.idle_minutes != null && u.idle_minutes <= LIVE_MINUTES);
       // Context folder and memory: from usage.py, else looked up by session id.
       const found = u ? { context_dir: u.context_dir, memory: u.memory } :
         locateById(e && e.agent, row.session);
@@ -354,6 +411,7 @@ function createMonitor(options) {
       settingsError,
       settingsFile,
       settingRanges: SETTING_RANGES,
+      skillPath,
     };
   }
 
@@ -368,8 +426,69 @@ function createMonitor(options) {
     pushTimer = setTimeout(push, 200);
   }
 
+  /**
+   * How a session can be opened so the user can type to it: attach to a
+   * background Claude Code session, else open its project folder.
+   * @param {object} row Joined row.
+   * @returns {{kind: "attach"|"folder", id?: string, path?: string}|null} The target.
+   */
+  function openTarget(row) {
+    if (row.live && row.live.kind === "background" && SAFE_ID.test(row.session)) {
+      return { kind: "attach", id: row.session, cwd: row.live.cwd || null };
+    }
+    const cwd = (row.entry && row.entry.cwd) || (row.usage && row.usage.cwd);
+    return cwd && fs.existsSync(cwd) ? { kind: "folder", path: cwd } : null;
+  }
+
+  /** Refresh the list of running Claude Code sessions (ignored if `claude` is absent). */
+  function refreshClaudeSessions(candidates = CLAUDE_CANDIDATES) {
+    if (!candidates.length || disposed) return;
+    execFile(candidates[0], ["agents", "--json"], { timeout: 20_000, maxBuffer: 4 * 1024 * 1024 },
+      (err, stdout) => {
+        if (err) return refreshClaudeSessions(candidates.slice(1));
+        try {
+          const list = JSON.parse(stdout);
+          claudeSessions = new Map(list.filter((x) => x.sessionId).map((x) => [x.sessionId, x]));
+          schedulePush();
+        } catch {
+          /* unexpected output: keep the previous list */
+        }
+      });
+  }
+
+  /**
+   * Leave a message in a session's inbox (same format as `board.py send`).
+   * Only sessions in the latest snapshot can be messaged.
+   * @param {string} sid Session id.
+   * @param {string} text Message text.
+   * @returns {{ok: boolean, error?: string, id?: string}} The outcome.
+   */
+  function sendMessage(sid, text) {
+    if (typeof sid !== "string" || !SAFE_ID.test(sid) || !known.has(sid)) {
+      return { ok: false, error: "unknown session" };
+    }
+    const body = typeof text === "string" ? text.trim() : "";
+    if (!body) return { ok: false, error: "empty message" };
+    if (body.length > MAX_MESSAGE) return { ok: false, error: `longer than ${MAX_MESSAGE} characters` };
+    const epoch = Date.now() / 1000;
+    const id = `${Date.now()}-${process.pid}`;
+    const msg = { id, to: sid, sender: options.sender || "viewer", text: body, at: new Date().toISOString().replace(/\.\d+Z$/, "Z"), epoch };
+    try {
+      const dir = path.join(board, "inbox", sid);
+      fs.mkdirSync(dir, { recursive: true });
+      const file = path.join(dir, `${id}.json`);
+      fs.writeFileSync(`${file}.tmp`, JSON.stringify(msg, null, 1));
+      fs.renameSync(`${file}.tmp`, file);
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+    schedulePush();
+    return { ok: true, id };
+  }
+
   /** Run usage.py (one run at a time), store its records, then push. */
   function refresh() {
+    refreshClaudeSessions();
     if (running || disposed) return;
     running = true;
     execFile(
@@ -413,6 +532,16 @@ function createMonitor(options) {
     snapshot,
     refresh,
     saveSettings,
+    sendMessage,
+    /**
+     * How to open a session of the latest snapshot (see openTarget).
+     * @param {string} sid Session id.
+     * @returns {object|null} The target, or null when it cannot be opened.
+     */
+    sessionTarget(sid) {
+      const row = known.get(sid);
+      return row ? openTarget(row) : null;
+    },
     /**
      * Whether ``p`` is a context or memory path of the latest snapshot that
      * still exists; hosts open only such paths.

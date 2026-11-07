@@ -13,6 +13,20 @@ whether each `<model>.status` background session is alive.
 Each card links to the session's context folder (where its agent keeps the
 session) and its memory; when one is gone or unknown, the card says so.
 
+**Message…** on a card sends a prompt to that agent, whatever it is
+(Copilot, Claude, Codex, Gemini, Mistral, Grok, …): it lands in the
+session's inbox (`~/.agent-behaviors/status/inbox/<session>/`), and the agent
+reads it the next time it publishes its status. The card shows messages
+still waiting and when the last one was read. **Open session** takes you to
+the agent instead, to type to it directly: Terminal with `claude attach` for
+a background Claude Code session, otherwise its project folder.
+
+A live session that doesn't report (active in the last 15 minutes, or
+running per `claude agents`) also gets **Start reporting**: it copies a
+prompt asking the agent to load the session-status skill and publish under
+its own session id, and opens the session so you can paste it there (an
+unreported agent doesn't read the inbox).
+
 The board refreshes as soon as a file changes. How often it also polls the
 board and re-measures usage is set in `~/.agent-behaviors/session-status.json`
 (`viewerBoardSeconds`, `viewerUsageSeconds`); a valid edit applies at once.

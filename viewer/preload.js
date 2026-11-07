@@ -28,4 +28,25 @@ contextBridge.exposeInMainWorld("statusApi", {
    * @returns {Promise<string>} Empty on success, else the error.
    */
   openPath: (p) => ipcRenderer.invoke("open-path", p),
+  /**
+   * Leave a prompt in a session's inbox (any agent that follows the
+   * session-status skill reads it when it next publishes).
+   * @param {string} session Session id.
+   * @param {string} text Prompt.
+   * @returns {Promise<{ok: boolean, error?: string}>} The outcome.
+   */
+  sendMessage: (session, text) => ipcRenderer.invoke("send-message", session, text),
+  /**
+   * Open a session so the user can type to it: attach to a background Claude
+   * Code session in Terminal, else open its project folder.
+   * @param {string} session Session id.
+   * @returns {Promise<{ok: boolean, error?: string}>} The outcome.
+   */
+  openSession: (session) => ipcRenderer.invoke("open-session", session),
+  /**
+   * Copy text to the clipboard.
+   * @param {string} text Text to copy.
+   * @returns {Promise<boolean>} True when copied.
+   */
+  copyText: (text) => ipcRenderer.invoke("copy-text", text),
 });

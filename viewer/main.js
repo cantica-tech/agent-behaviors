@@ -6,7 +6,8 @@
  * ../session-status/scripts/usage.py. Read-only towards the board.
  */
 
-const { app, BrowserWindow, ipcMain, nativeImage, shell } = require("electron");
+const { app, BrowserWindow, clipboard, ipcMain, nativeImage, shell } = require("electron");
+const { execFile } = require("child_process");
 const path = require("path");
 const { createMonitor } = require("./shared/status");
 
@@ -51,6 +52,29 @@ function createWindow() {
 ipcMain.handle("open-path", (_event, p) =>
   monitor.isOpenablePath(p) ? shell.openPath(p) : "not a context or memory path of the current status");
 
+ipcMain.handle("copy-text", (_event, text) => {
+  if (typeof text !== "string" || text.length > 10000) return false;
+  clipboard.writeText(text);
+  return true;
+});
+
+ipcMain.handle("send-message", (_event, session, text) => monitor.sendMessage(session, text));
+
+ipcMain.handle("open-session", async (_event, session) => {
+  const target = monitor.sessionTarget(session);
+  if (!target) return { ok: false, error: "this session cannot be opened" };
+  if (target.kind === "attach") {
+    if (process.platform !== "darwin") return { ok: false, error: `run: claude attach ${target.id}` };
+    // target.id matches [A-Za-z0-9._-] (checked by the monitor), so it is safe in the script.
+    return new Promise((resolve) => execFile("osascript", [
+      "-e", 'tell application "Terminal" to activate',
+      "-e", `tell application "Terminal" to do script "claude attach ${target.id}"`,
+    ], (err) => resolve(err ? { ok: false, error: err.message } : { ok: true })));
+  }
+  const error = await shell.openPath(target.path);
+  return error ? { ok: false, error } : { ok: true };
+});
+
 ipcMain.handle("save-settings", (_event, values) => monitor.saveSettings(values));
 
 ipcMain.handle("refresh", () => {
@@ -60,7 +84,12 @@ ipcMain.handle("refresh", () => {
 
 app.whenReady().then(() => {
   if (process.platform === "darwin" && app.dock) app.dock.setIcon(nativeImage.createFromPath(ICON));
-  monitor = createMonitor({ usagePy: USAGE_PY, usageState: "viewer", onChange: send });
+  monitor = createMonitor({
+    usagePy: USAGE_PY,
+    usageState: "viewer",
+    skillPath: path.join(__dirname, "..", "session-status", "SKILL.md"),
+    onChange: send,
+  });
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

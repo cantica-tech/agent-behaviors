@@ -13,6 +13,13 @@ the same view as the [Electron viewer](../README.md).
   none.
 - Each card links to the session's context folder and memory; a location
   that is gone or unknown is described instead.
+- **Message…** on a card sends a prompt to that agent's inbox (any agent
+  that follows the session-status skill reads it when it next publishes).
+  **Open session** attaches a terminal to a background Claude Code session,
+  or opens the session's project folder.
+- **Start reporting**, on live sessions that don't report only, copies a
+  prompt asking the agent to load the session-status skill and opens the
+  session to paste it.
 - The status bar shows how many sessions are working, waiting or blocked.
   Click it to open the panel.
 

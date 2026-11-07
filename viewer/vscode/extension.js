@@ -84,6 +84,31 @@ function updateBadge(snap) {
 }
 
 /**
+ * Open a session so the user can type to it: a terminal attached to a
+ * background Claude Code session, else its project folder (a new window,
+ * unless it is already open here).
+ * @param {string} session Session id.
+ * @returns {Promise<{ok: boolean, error?: string}>} The outcome.
+ */
+async function openSession(session) {
+  const target = monitor && monitor.sessionTarget(session);
+  if (!target) return { ok: false, error: "this session cannot be opened" };
+  if (target.kind === "attach") {
+    const terminal = vscode.window.createTerminal({ name: `claude ${target.id.slice(0, 8)}`, cwd: target.cwd || undefined });
+    terminal.show();
+    terminal.sendText(`claude attach ${target.id}`); // id matches [A-Za-z0-9._-]
+    return { ok: true };
+  }
+  const here = (vscode.workspace.workspaceFolders || []).some((f) => f.uri.fsPath === target.path);
+  if (here) {
+    vscode.window.showInformationMessage("Agent Status: this session runs in this window's project; type to it in its chat or terminal.");
+    return { ok: true };
+  }
+  await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(target.path), { forceNewWindow: true });
+  return { ok: true };
+}
+
+/**
  * Set up a webview (panel or activity-bar view): options, HTML, messages.
  * @param {vscode.Webview} webview Target webview.
  * @param {vscode.ExtensionContext} context Extension context.
@@ -102,7 +127,19 @@ function attachWebview(webview, context) {
     }
     if (msg.type === "saveSettings") {
       const result = monitor ? monitor.saveSettings(msg.values) : { ok: false, error: "not running" };
-      webview.postMessage({ type: "saveResult", id: msg.id, result });
+      webview.postMessage({ type: "result", id: msg.id, result });
+    }
+    if (msg.type === "sendMessage") {
+      const result = monitor ? monitor.sendMessage(msg.session, msg.text) : { ok: false, error: "not running" };
+      webview.postMessage({ type: "result", id: msg.id, result });
+    }
+    if (msg.type === "copyText") {
+      const ok = typeof msg.text === "string" && msg.text.length <= 10000;
+      (ok ? vscode.env.clipboard.writeText(msg.text) : Promise.resolve())
+        .then(() => webview.postMessage({ type: "result", id: msg.id, result: ok }));
+    }
+    if (msg.type === "openSession") {
+      openSession(msg.session).then((result) => webview.postMessage({ type: "result", id: msg.id, result }));
     }
     if (msg.type === "refresh" && monitor) {
       monitor.refresh();

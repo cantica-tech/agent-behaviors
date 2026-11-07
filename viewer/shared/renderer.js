@@ -111,6 +111,7 @@ function card(row) {
   ident.append(el("span", "k", "id "), el("span", "sid", row.session));
   node.append(ident);
   node.append(linksLine(row));
+  node.append(messageArea(row));
 
   const task = e.task || (u.title ? `(title) ${u.title}` : "");
   if (task) node.append(el("div", "task", task));
@@ -140,6 +141,118 @@ function card(row) {
     node.append(list);
   }
   return node;
+}
+
+/** Message drafts by session id, kept across re-renders: {open, text, status}. */
+const drafts = new Map();
+
+/**
+ * Inbox line, "Message…" button and composer of a card. The composer sends a
+ * prompt to the session's inbox (read by any agent that follows the
+ * session-status skill when it next publishes) and offers to open the
+ * session so the user can type to it directly.
+ * @param {object} row Joined row (`inbox`, `open`, `entry`).
+ * @returns {HTMLElement} The area.
+ */
+function messageArea(row) {
+  const area = el("div", "messaging");
+  const draft = drafts.get(row.session) || { open: false, text: "", status: "" };
+  drafts.set(row.session, draft);
+  const inbox = row.inbox || {};
+  const bar = el("div", "msgbar");
+  const toggle = el("button", "small", draft.open ? "Close" : "Message…");
+  bar.append(toggle);
+  if (!row.entry && row.liveNow) bar.append(startReportingButton(row, draft));
+  if (inbox.unread) bar.append(el("span", "waiting", `${inbox.unread} message${inbox.unread === 1 ? "" : "s"} waiting`));
+  else if (inbox.lastRead) bar.append(el("span", "k", `last message read ${new Date(inbox.lastRead).toLocaleTimeString()}`));
+  area.append(bar);
+  toggle.addEventListener("click", () => {
+    draft.open = !draft.open;
+    if (last) render(last);
+  });
+  if (!draft.open) return area;
+
+  const box = el("div", "composer");
+  const text = document.createElement("textarea");
+  text.className = "compose";
+  text.rows = 3;
+  text.placeholder = "Prompt for this agent…";
+  text.value = draft.text;
+  text.addEventListener("input", () => {
+    draft.text = text.value;
+  });
+  text.addEventListener("blur", () => setTimeout(() => last && render(last), 0));
+  const actions = el("div", "actions");
+  const send = el("button", "primary small", "Send");
+  const open = el("button", "small", row.open && row.open.kind === "attach" ? "Open session (attach)" : "Open session");
+  open.disabled = !row.open;
+  if (!row.open) open.title = "No way to open this session: its project folder is unknown";
+  const status = el("span", "message", draft.status);
+  actions.append(send, open, status);
+  const notes = [];
+  if (!row.entry) notes.push("This session doesn't publish its status, so it won't read messages: use Open session.");
+  else if (["idle", "waiting", "done"].includes(row.entry.state)) {
+    notes.push(`It is ${row.entry.state}: it reads messages only when it next publishes.`);
+  }
+  box.append(text, actions);
+  for (const n of notes) box.append(el("div", "k note", n));
+  area.append(box);
+
+  send.addEventListener("click", async () => {
+    send.disabled = true;
+    const result = await window.statusApi.sendMessage(row.session, draft.text);
+    send.disabled = false;
+    draft.status = result.ok ? "Sent to its inbox." : result.error;
+    if (result.ok) draft.text = "";
+    if (last) render(last);
+  });
+  open.addEventListener("click", async () => {
+    const result = await window.statusApi.openSession(row.session);
+    draft.status = result && result.ok === false ? result.error : "";
+    if (last) render(last);
+  });
+  return area;
+}
+
+/**
+ * Prompt asking an agent to load the session-status skill and report under
+ * its own session id (the id the viewers already show for it).
+ * @param {string} skillPath Real path of session-status/SKILL.md.
+ * @param {string} sid The session's id.
+ * @returns {string} The prompt.
+ */
+function startReportingPrompt(skillPath, sid) {
+  return `Load the skill ${skillPath} and follow it from now on. ` +
+    `Publish your status right away with its board.py, using your session id ${sid}, ` +
+    `then publish before you start each task and after you finish it.`;
+}
+
+/**
+ * "Start reporting" button, shown only for live sessions that don't report.
+ * Such a session doesn't read the inbox, so the prompt can't be delivered
+ * there: the button copies it to the clipboard and opens the session for the
+ * user to paste it.
+ * @param {object} row Joined row (no `entry`, `liveNow` true).
+ * @param {object} draft The card's draft state, for the status text.
+ * @returns {HTMLElement} The button.
+ */
+function startReportingButton(row, draft) {
+  const button = el("button", "small primary", "Start reporting");
+  const skill = (last && last.skillPath) || null;
+  button.disabled = !skill || !row.open;
+  button.title = !skill ? "session-status skill not found (~/.agent-behaviors/skills/session-status)" :
+    !row.open ? "This session cannot be opened" :
+    "Copy a prompt asking this agent to load the session-status skill, and open its session to paste it";
+  button.addEventListener("click", async () => {
+    const copied = await window.statusApi.copyText(startReportingPrompt(skill, row.session));
+    const opened = await window.statusApi.openSession(row.session);
+    draft.open = true;
+    draft.status = !copied ? "Could not copy the prompt." :
+      opened && opened.ok === false ? `Prompt copied; could not open the session (${opened.error}).` :
+      "Prompt copied: paste it into the session that just opened.";
+    if (last) render(last);
+  });
+  return button;
 }
 
 /** What each link is called, and what to say when its target is gone or unknown. */
@@ -202,6 +315,9 @@ function nameOf(entry) {
  */
 function render(snap) {
   last = snap;
+  // Don't rebuild the cards under the user's typing; re-render when the box loses focus.
+  const active = document.activeElement;
+  if (active && active.classList && active.classList.contains("compose")) return;
   const showUnreported = document.getElementById("showUnreported").checked;
   const hideDone = document.getElementById("hideDone").checked;
   const rows = snap.rows
