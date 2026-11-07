@@ -77,3 +77,21 @@ body.vscode-light button, body.vscode-dark button, body.vscode-high-contrast but
   .card { padding: 10px; }
   .grid { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Settings panel (header "Settings" button). */
+.settings-panel { margin: 10px 18px 0; padding: 12px 14px; background: var(--card);
+  border: 1px solid var(--line); border-radius: 10px; }
+.settings-panel form { display: grid; gap: 8px; max-width: 560px; }
+.setting { display: grid; grid-template-columns: minmax(150px, 1fr) 90px 16px 80px; align-items: center; gap: 8px; }
+.setting input { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 6px; width: 100%; }
+.settings-panel .actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.settings-panel button.primary { border-color: var(--working); }
+.settings-panel .message.ok { color: var(--working); }
+.settings-panel .message.bad { color: var(--warn); }
+.settings-panel .where { overflow-wrap: anywhere; }
+@media (max-width: 420px) {
+  .settings-panel { margin: 8px 10px 0; padding: 10px; }
+  .setting { grid-template-columns: 1fr 80px 14px; }
+  .setting .k:last-child { grid-column: 2 / 4; }
+}

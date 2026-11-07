@@ -2,7 +2,7 @@
   "name": "agent-status",
   "displayName": "Agent Status",
   "description": "Live status of the agent sessions on this machine, from the agent-behaviors session-status board.",
-  "version": "0.4.0",
+  "version": "0.5.1",
   "publisher": "canticatech",
   "icon": "media/icon.png",
   "license": "UNLICENSED",
@@ -34,6 +34,12 @@
         "title": "Refresh",
         "category": "Agent Status",
         "icon": "$(refresh)"
+      },
+      {
+        "command": "agentStatus.openSettings",
+        "title": "Open Settings File",
+        "category": "Agent Status",
+        "icon": "$(settings-gear)"
       }
     ],
     "configuration": {
@@ -89,6 +95,11 @@
         },
         {
           "command": "agentStatus.open",
+          "when": "view == agentStatus.sidebar",
+          "group": "navigation"
+        },
+        {
+          "command": "agentStatus.openSettings",
           "when": "view == agentStatus.sidebar",
           "group": "navigation"
         }

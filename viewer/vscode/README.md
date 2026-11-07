@@ -16,7 +16,9 @@ the same view as the [Electron viewer](../README.md).
 
 The board refreshes as soon as a file changes. The refresh rates come from
 `~/.agent-behaviors/session-status.json` (see the session-status skill) and
-change as soon as that file is saved. The extension only reads the board.
+change as soon as that file is saved. Edit them with the **Settings** button
+in the view, or open the file itself with **Agent Status: Open Settings
+File** (also the gear button in the sidebar title bar). The extension only reads the board.
 Its `usage.py` deltas are kept in `.usage-vscode.json`.
 
 ## Settings

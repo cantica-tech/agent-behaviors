@@ -62,9 +62,13 @@ python3 <skill>/scripts/board.py publish --session <id> --agent <agent> \
   prefer the real session id whenever your agent exposes it. If you also
   have a name others can reach you by (e.g. your `ListAgents` name), put it
   in a note: `--note "name: <name>"`.
-- Publish when you start a task, finish one, or start waiting on the user,
-  and whenever `board.py pending --session <id>` exits 0 (someone asked for a
-  status). Check `pending` at natural breaks. Don't stop work to do it.
+- **Publish before you start a task**, as your first action, before any
+  other tool call for it (`--state working`, the task, items left).
+- **Publish after you finish it**, as your last action, before your final
+  reply (`--state done`, or `idle`/`waiting` if more is coming).
+- Also publish when you start waiting on the user, and whenever
+  `board.py pending --session <id>` exits 0 (someone asked for a status).
+  Check `pending` at natural breaks. Don't stop work to do it.
 - Be concrete and honest. Items left is a count you can list. Projected
   tokens is your estimate of the tokens still to spend, based on what similar
   steps have cost so far. Say `unknown` in `--eta` rather than guess.
@@ -162,7 +166,8 @@ line in `<model>.log`.
    from the measured usage.
 
    Mark self-reported values and say how old they are. Flag stale entries
-   (older than the session's last activity). Put blockers and pending user
+   (older than the session's last activity), except for `done` sessions,
+   which are never stale. Put blockers and pending user
    decisions first, then notes (e.g. a missing tool). Keep it short: this may run every few minutes.
 
 ## Rules

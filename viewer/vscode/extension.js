@@ -11,7 +11,7 @@
 const vscode = require("vscode");
 const crypto = require("crypto");
 const path = require("path");
-const { createMonitor } = require("./media/status");
+const { createMonitor, DEFAULT_SETTINGS_FILE } = require("./media/status");
 
 /** The open webview panel, or null. */
 let panel = null;
@@ -96,6 +96,10 @@ function attachWebview(webview, context) {
   webviews.add(webview);
   const sub = webview.onDidReceiveMessage((msg) => {
     if (msg.type === "ready" && latest) webview.postMessage({ type: "status", snapshot: latest });
+    if (msg.type === "saveSettings") {
+      const result = monitor ? monitor.saveSettings(msg.values) : { ok: false, error: "not running" };
+      webview.postMessage({ type: "saveResult", id: msg.id, result });
+    }
     if (msg.type === "refresh" && monitor) {
       monitor.refresh();
       onSnapshot(monitor.snapshot());
@@ -225,6 +229,14 @@ function activate(context) {
     statusItem,
     vscode.commands.registerCommand("agentStatus.open", () => openPanel(context)),
     vscode.commands.registerCommand("agentStatus.refresh", () => monitor && monitor.refresh()),
+    vscode.commands.registerCommand("agentStatus.openSettings", async () => {
+      const file = (latest && latest.settingsFile) || DEFAULT_SETTINGS_FILE;
+      try {
+        await vscode.window.showTextDocument(vscode.Uri.file(file));
+      } catch (err) {
+        vscode.window.showErrorMessage(`Agent Status: cannot open ${file}: ${err.message}`);
+      }
+    }),
     vscode.window.registerWebviewViewProvider("agentStatus.sidebar", new SidebarProvider(context), {
       webviewOptions: { retainContextWhenHidden: true },
     }),

@@ -48,6 +48,8 @@ function createWindow() {
   win.webContents.on("did-finish-load", () => send(monitor.snapshot()));
 }
 
+ipcMain.handle("save-settings", (_event, values) => monitor.saveSettings(values));
+
 ipcMain.handle("refresh", () => {
   monitor.refresh();
   return monitor.snapshot();

@@ -205,3 +205,99 @@ window.statusApi.onStatus(render);
 document.getElementById("refresh").addEventListener("click", async () => render(await window.statusApi.refresh()));
 document.getElementById("showUnreported").addEventListener("change", () => last && render(last));
 document.getElementById("hideDone").addEventListener("change", () => last && render(last));
+
+/** Settings the panel edits: key, label and unit, in display order. */
+const SETTING_FIELDS = [
+  ["viewerBoardSeconds", "Board refresh", "s"],
+  ["viewerUsageSeconds", "Usage refresh", "s"],
+  ["statusSessionSeconds", "Status session cycle", "s"],
+  ["doneVisibleHours", "Show done sessions for", "h"],
+];
+
+/**
+ * Settings panel: a header button that opens a small form to edit the
+ * session-status settings at runtime. Saving goes through
+ * `window.statusApi.saveSettings`, which validates, writes the settings file
+ * and applies the new rates at once. The form is filled when it opens and is
+ * not refreshed by later snapshots, so typing is never interrupted.
+ */
+function setupSettingsPanel() {
+  if (!window.statusApi.saveSettings) return;
+  const button = el("button", null, "Settings");
+  button.id = "settingsButton";
+  document.getElementById("refresh").before(button);
+
+  const panel = el("section", "settings-panel");
+  panel.hidden = true;
+  const form = el("form");
+  const inputs = {};
+  for (const [key, label, unit] of SETTING_FIELDS) {
+    const row = el("label", "setting");
+    const input = document.createElement("input");
+    input.type = "number";
+    input.step = "any";
+    input.name = key;
+    inputs[key] = input;
+    const range = el("span", "k");
+    row.append(el("span", null, label), input, el("span", "k", unit), range);
+    row.range = range;
+    form.append(row);
+  }
+  const actions = el("div", "actions");
+  const save = el("button", "primary", "Save");
+  save.type = "submit";
+  const cancel = el("button", null, "Close");
+  cancel.type = "button";
+  const message = el("span", "message");
+  actions.append(save, cancel, message);
+  const where = el("div", "k where");
+  form.append(actions, where);
+  panel.append(form);
+  document.querySelector("header").after(panel);
+
+  /** Fill the form from the latest snapshot. */
+  function fill() {
+    const snap = last || {};
+    const values = snap.settings || {};
+    const ranges = snap.settingRanges || {};
+    for (const [key] of SETTING_FIELDS) {
+      const input = inputs[key];
+      const r = ranges[key];
+      if (r) {
+        input.min = r[0];
+        input.max = r[1];
+        input.parentElement.range.textContent = `${r[0]}–${r[1]}`;
+      }
+      input.value = values[key] ?? "";
+    }
+    where.textContent = snap.settingsFile ? `Saved to ${snap.settingsFile}; applies at once.` : "";
+    message.textContent = "";
+    message.className = "message";
+  }
+
+  button.addEventListener("click", () => {
+    panel.hidden = !panel.hidden;
+    if (!panel.hidden) fill();
+  });
+  cancel.addEventListener("click", () => {
+    panel.hidden = true;
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const values = {};
+    for (const [key] of SETTING_FIELDS) values[key] = Number(inputs[key].value);
+    save.disabled = true;
+    try {
+      const result = await window.statusApi.saveSettings(values);
+      message.textContent = result.ok ? "Saved." : result.error;
+      message.className = `message ${result.ok ? "ok" : "bad"}`;
+    } catch (err) {
+      message.textContent = String(err && err.message ? err.message : err);
+      message.className = "message bad";
+    } finally {
+      save.disabled = false;
+    }
+  });
+}
+
+setupSettingsPanel();

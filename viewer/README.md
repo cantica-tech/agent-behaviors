@@ -13,6 +13,9 @@ whether each `<model>.status` background session is alive.
 The board refreshes as soon as a file changes. How often it also polls the
 board and re-measures usage is set in `~/.agent-behaviors/session-status.json`
 (`viewerBoardSeconds`, `viewerUsageSeconds`); a valid edit applies at once.
+The **Settings** button in the header edits that file in place while the
+viewer runs: values are checked against their ranges, and they apply as
+soon as they are saved.
 The viewer only reads: it never writes a session entry. Its own `usage.py`
 deltas are kept in `.usage-viewer.json`, apart from everyone else's.
 

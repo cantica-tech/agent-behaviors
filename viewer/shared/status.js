@@ -141,8 +141,9 @@ function parseUsage(stdout) {
  * @param {string} [options.settingsFile] Settings file (default ~/.agent-behaviors/session-status.json).
  *   Its viewerUsageSeconds and viewerBoardSeconds set the refresh rates; it is
  *   watched, and every valid change applies at once, without a restart.
- * @returns {{snapshot: () => object, refresh: () => void, dispose: () => void}}
+ * @returns {{snapshot: () => object, refresh: () => void, saveSettings: (values: object) => object, dispose: () => void}}
  *   `snapshot` returns the current state, `refresh` re-runs usage.py now,
+ *   `saveSettings` writes new settings (validated, applied at once),
  *   `dispose` stops every watcher and timer.
  */
 function createMonitor(options) {
@@ -194,6 +195,54 @@ function createMonitor(options) {
     return changed;
   }
 
+  /**
+   * Save new setting values to the settings file, at runtime.
+   *
+   * Every value must be a known key with an in-range number, or nothing is
+   * written. The file is updated in place: its other keys (e.g. `_doc`) are
+   * kept, and it is replaced atomically so no reader sees a half-written
+   * file. A file that is not valid JSON is not overwritten. The new rates
+   * apply at once.
+   * @param {object} values Setting name -> number.
+   * @returns {{ok: boolean, error?: string, settings?: object}} The outcome.
+   */
+  function saveSettings(values) {
+    if (!values || typeof values !== "object") return { ok: false, error: "no values" };
+    const clean = {};
+    for (const [key, v] of Object.entries(values)) {
+      const range = SETTING_RANGES[key];
+      if (!range) return { ok: false, error: `unknown setting ${key}` };
+      const n = typeof v === "string" ? Number(v) : v;
+      if (typeof n !== "number" || !Number.isFinite(n) || n < range[0] || n > range[1]) {
+        return { ok: false, error: `${key} must be a number from ${range[0]} to ${range[1]}` };
+      }
+      clean[key] = n;
+    }
+    let data = {};
+    if (fs.existsSync(settingsFile)) {
+      try {
+        data = JSON.parse(fs.readFileSync(settingsFile, "utf8"));
+      } catch (err) {
+        return { ok: false, error: `${settingsFile} is not valid JSON; fix it first (${err.message})` };
+      }
+      if (!data || typeof data !== "object" || Array.isArray(data)) {
+        return { ok: false, error: `${settingsFile} is not a JSON object; fix it first` };
+      }
+    }
+    Object.assign(data, clean);
+    try {
+      fs.mkdirSync(path.dirname(settingsFile), { recursive: true });
+      const tmp = `${settingsFile}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + "\n");
+      fs.renameSync(tmp, settingsFile);
+    } catch (err) {
+      return { ok: false, error: `could not write ${settingsFile}: ${err.message}` };
+    }
+    if (reloadSettings()) schedule();
+    push();
+    return { ok: true, settings: { ...settings } };
+  }
+
   /** (Re)start the periodic timers with the current settings. */
   function schedule() {
     clearInterval(boardTimer);
@@ -234,9 +283,12 @@ function createMonitor(options) {
     for (const row of rows.values()) {
       const e = row.entry;
       const u = row.usage;
-      // An entry is stale when the session has been active since it last published.
+      // An entry is stale when the session has been active since it last
+      // published. A done session is never stale: its activity after reporting
+      // done (e.g. the final reply) doesn't make the entry out of date.
       row.stale = Boolean(
-        e && u && u.last && e.updated_epoch && Date.parse(u.last) / 1000 > e.updated_epoch + 60,
+        e && e.state !== "done" && u && u.last && e.updated_epoch &&
+          Date.parse(u.last) / 1000 > e.updated_epoch + 60,
       );
     }
     return {
@@ -247,6 +299,8 @@ function createMonitor(options) {
       usageError,
       settings: { ...settings },
       settingsError,
+      settingsFile,
+      settingRanges: SETTING_RANGES,
     };
   }
 
@@ -305,6 +359,7 @@ function createMonitor(options) {
   return {
     snapshot,
     refresh,
+    saveSettings,
     dispose() {
       disposed = true;
       clearTimeout(pushTimer);
