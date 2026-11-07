@@ -6,10 +6,12 @@
   "private": true,
   "scripts": {
     "start": "env -u ELECTRON_RUN_AS_NODE electron .",
-    "icons": "env -u ELECTRON_RUN_AS_NODE electron scripts/render-icons.js"
+    "icons": "env -u ELECTRON_RUN_AS_NODE electron scripts/render-icons.js",
+    "test": "node --test test/"
   },
   "devDependencies": {
-    "electron": "^33.2.1"
+    "electron": "^33.2.1",
+    "jsdom": "^25.0.1"
   },
   "allowScripts": {
     "electron@33.4.11": true

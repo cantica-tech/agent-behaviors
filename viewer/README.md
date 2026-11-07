@@ -46,6 +46,25 @@ deltas are kept in `.usage-viewer.json`, apart from everyone else's.
 The same view is available inside VS Code: see [vscode/](vscode/README.md).
 Both share the status monitor, renderer and styles in [shared/](shared).
 
+## Tests
+
+```sh
+cd viewer
+npm install
+npm test        # or: cd vscode && npm test
+```
+
+Unit tests (`node:test`, with jsdom for the pages) cover both viewers
+without opening a window or running an agent:
+
+| File | What it tests |
+| --- | --- |
+| [test/status.test.js](test/status.test.js) | Shared monitor: board, usage join, settings (validation, live reload, saving), done expiry, stale, links, inbox, messaging, session info |
+| [test/renderer.test.js](test/renderer.test.js) | Card UI: header, order, cards, links, filters, messaging, Onboard, settings panel |
+| [test/chat.test.js](test/chat.test.js) | Chat core (CLI args, stream-json events, attachments, completion) and chat window |
+| [test/electron.test.js](test/electron.test.js) | Electron main process, IPC, chat process manager, preloads (Electron mocked) |
+| [test/vscode.test.js](test/vscode.test.js) | VS Code extension (vscode API mocked) and webview bridge |
+
 ## Icon
 
 [viewer.svg](viewer.svg) is the icon of both viewers. Electron window icons

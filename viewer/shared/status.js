@@ -227,6 +227,10 @@ function parseUsage(stdout) {
  * @param {string} [options.board] Board directory (default ~/.agent-behaviors/status).
  * @param {string} [options.usageState] usage.py --state name, one per caller, so deltas stay apart.
  * @param {string} [options.python] Python interpreter (default "python3").
+ * @param {string[]} [options.claudeCandidates] `claude` commands to try for
+ *   `claude agents --json` (default: PATH, then ~/.local/bin); [] disables it.
+ * @param {string} [options.skillPath] session-status SKILL.md that "Onboard" asks agents to load.
+ * @param {string} [options.sender] Sender name written into messages (default "viewer").
  * @param {string} [options.settingsFile] Settings file (default ~/.agent-behaviors/session-status.json).
  *   Its viewerUsageSeconds and viewerBoardSeconds set the refresh rates; it is
  *   watched, and every valid change applies at once, without a restart.
@@ -441,7 +445,7 @@ function createMonitor(options) {
   }
 
   /** Refresh the list of running Claude Code sessions (ignored if `claude` is absent). */
-  function refreshClaudeSessions(candidates = CLAUDE_CANDIDATES) {
+  function refreshClaudeSessions(candidates = options.claudeCandidates || CLAUDE_CANDIDATES) {
     if (!candidates.length || disposed) return;
     execFile(candidates[0], ["agents", "--json"], { timeout: 20_000, maxBuffer: 4 * 1024 * 1024 },
       (err, stdout) => {

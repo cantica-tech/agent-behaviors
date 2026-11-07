@@ -318,4 +318,28 @@ function activate(context) {
 /** Deactivate: everything is disposed through context.subscriptions. */
 function deactivate() {}
 
-module.exports = { activate, deactivate };
+module.exports = {
+  activate,
+  deactivate,
+  /** Internals exposed for the unit tests only. */
+  _test: {
+    updateStatusBar,
+    updateBadge,
+    openChat,
+    openSession,
+    html,
+    SidebarProvider,
+    get monitor() {
+      return monitor;
+    },
+    get latest() {
+      return latest;
+    },
+    get panel() {
+      return panel;
+    },
+    get webviews() {
+      return webviews;
+    },
+  },
+};
