@@ -11,14 +11,21 @@ blocked or asked each time:
   Codex            ~/.codex/rules/default.rules   prefix_rule(pattern=["<tool>"], decision="allow")
 
 Agents with no allow-list this script knows how to set (Copilot CLI, Gemini
-CLI, Mistral Vibe, ...) are reported with what to do by hand. Nothing is
-ever removed, and a settings file that is not plain JSON (e.g. has
+CLI, Mistral Vibe, ...) are reported with what to do by hand (for Mistral
+Vibe, the "Allow: <tool>" lines to add to the project's AGENTS.md). Nothing
+is ever removed, and a settings file that is not plain JSON (e.g. has
 comments) is left untouched and reported, rather than rewritten.
 
-Usage: allow-tools.py [--dry-run] [--check] [--quiet]
+It also tells you, with commands for your OS:
+- how to install a tool that is not installed (from the skill's tools.json);
+- how to install the Claude Code hook that runs this script at every start
+  (setup/install-claude-hook.py), when Claude Code is detected without it.
+
+Usage: allow-tools.py [--dry-run] [--check] [--quiet] [--os macos|linux|windows]
   --dry-run  show what would change, change nothing
   --check    change nothing; exit 1 if any detected agent lacks a tool
-  --quiet    print only changes and errors (for hooks: silent when all is allowed)
+  --quiet    print only changes and problems (for hooks: silent when all is fine)
+  --os       give the commands for another OS than this one
 """
 
 import argparse
@@ -38,10 +45,24 @@ CODEX_BEGIN = "# >>> agent-behaviors: tools the skills use (managed by setup/all
 CODEX_END = "# <<< agent-behaviors"
 
 
-def skill_tools(root=ROOT):
-    """Return the sorted tools listed by every skill's tools.json under ``root``."""
-    tools = set()
-    for f in glob.glob(os.path.join(root, "**", "tools.json"), recursive=True):
+def current_os():
+    """Return 'macos', 'linux' or 'windows' for this machine."""
+    return {"Darwin": "macos", "Windows": "windows"}.get(platform.system(), "linux")
+
+
+def valid_name(name):
+    """True when ``name`` is a plain command name (safe in rules and shell lines)."""
+    return isinstance(name, str) and bool(name) and all(c.isalnum() or c in "._-" for c in name)
+
+
+def skill_catalog(root=ROOT):
+    """Return {tool: install-by-OS} for every tool listed in a skill's tools.json under ``root``.
+
+    A tools.json lists names, or objects {"name", "install": {"macos"|"linux"|
+    "windows": [{"needs": cmd, "run": [lines]}]}}.
+    """
+    catalog = {}
+    for f in sorted(glob.glob(os.path.join(root, "**", "tools.json"), recursive=True)):
         if f"{os.sep}node_modules{os.sep}" in f or f"{os.sep}viewer{os.sep}" in f:
             continue
         try:
@@ -49,9 +70,60 @@ def skill_tools(root=ROOT):
         except (OSError, ValueError):
             continue
         for t in data.get("tools", []) if isinstance(data, dict) else []:
-            if isinstance(t, str) and t.strip() and all(c.isalnum() or c in "._-" for c in t):
-                tools.add(t.strip())
-    return sorted(tools)
+            name, install = (t, {}) if isinstance(t, str) else (t.get("name"), t.get("install") or {})
+            if valid_name(name):
+                catalog.setdefault(name, install)
+    return catalog
+
+
+def skill_tools(root=ROOT):
+    """Return the sorted tools listed by every skill's tools.json under ``root``."""
+    return sorted(skill_catalog(root))
+
+
+def install_lines(install, os_name):
+    """Return the shell lines that install a tool on ``os_name``.
+
+    Picks the first alternative whose ``needs`` command is available on this
+    machine; when none is (or another OS is asked for), returns every
+    alternative, each introduced by a comment line.
+    """
+    alts = install.get(os_name) or []
+    if os_name == current_os():
+        for alt in alts:
+            if shutil.which(alt.get("needs", "")):
+                return list(alt.get("run", []))
+    lines = []
+    for alt in alts:
+        lines.append(f"# with {alt.get('needs')}:")
+        lines.extend(alt.get("run", []))
+    return lines
+
+
+def python_command(os_name):
+    """Return the command that runs Python 3 on ``os_name``."""
+    return "py -3" if os_name == "windows" else "python3"
+
+
+def claude_hook_installed():
+    """True when ~/.claude/settings.json has a SessionStart hook running allow-tools.py."""
+    data, err = load_json(Claude.path)
+    if err or not data:
+        return False
+    for group in (data.get("hooks") or {}).get("SessionStart") or []:
+        for h in group.get("hooks") or []:
+            if "allow-tools.py" in str(h.get("command", "")):
+                return True
+    return False
+
+
+def mistral_lines(tools, os_name):
+    """Shell lines adding "Allow: <tool>" to the project's AGENTS.md, once each, for ``os_name``."""
+    if os_name == "windows":
+        names = ", ".join(f"'{t}'" for t in tools)
+        return [f"foreach ($t in {names}) {{ if (-not (Select-String -Quiet -Pattern \"^Allow: $t$\" AGENTS.md "
+                f"-ErrorAction SilentlyContinue)) {{ Add-Content AGENTS.md \"Allow: $t\" }} }}"]
+    return [f"for t in {' '.join(tools)}; do grep -qx \"Allow: $t\" AGENTS.md 2>/dev/null || echo \"Allow: $t\" >> AGENTS.md; done"]
 
 
 def load_json(path):
@@ -193,8 +265,16 @@ AGENTS = [Claude(), VSCodeCopilot(), Codex()]
 MANUAL = [
     ("Copilot CLI", ["copilot"], "start it with --allow-tool 'shell(<tool>)' for each tool, or approve each once"),
     ("Gemini CLI", ["gemini", os.path.join(HOME, ".gemini", "settings.json")], "add the tools to its settings' allowed shell commands"),
-    ("Mistral Vibe", ["vibe", os.path.join(HOME, ".vibe")], "allow the tools in its tool permissions"),
 ]
+#: How Mistral Vibe is detected (its command, its folder, or its VS Code extension).
+MISTRAL_PROBES = ["vibe", os.path.join(HOME, ".vibe")]
+
+
+def mistral_detected():
+    """True when Mistral Vibe is installed (CLI, folder, or VS Code extension)."""
+    if any(shutil.which(p) if os.sep not in p else os.path.exists(p) for p in MISTRAL_PROBES):
+        return True
+    return bool(glob.glob(os.path.join(HOME, ".vscode", "extensions", "mistralai.mistral-vibe*")))
 
 
 def main():
@@ -203,8 +283,10 @@ def main():
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--quiet", action="store_true")
+    ap.add_argument("--os", choices=["macos", "linux", "windows"], default=current_os())
     a = ap.parse_args()
-    tools = skill_tools()
+    catalog = skill_catalog()
+    tools = sorted(catalog)
     say = (lambda *x: None) if a.quiet else print
     say(f"Tools the skills use: {', '.join(tools) or 'none'}")
     lacking = False
@@ -227,6 +309,22 @@ def main():
     for name, probes, how in MANUAL:
         if any(shutil.which(p) if os.sep not in p else os.path.exists(p) for p in probes):
             say(f"- {name}: detected; no allow-list set automatically: {how} ({', '.join(tools)})")
+    if mistral_detected() and tools:
+        say("- Mistral Vibe: detected; in each project where you use it, add the tools to AGENTS.md:")
+        for line in mistral_lines(tools, a.os):
+            say(f"    {line}")
+    # Tools that are not installed: how to install them on this OS.
+    for name in tools:
+        if a.os == current_os() and shutil.which(name):
+            continue
+        lines = install_lines(catalog[name], a.os)
+        print(f"! {name} is not installed. Install it ({a.os}):" if a.os == current_os() else f"Install {name} ({a.os}):")
+        for line in lines or ["(no install command known; see the skill's README)"]:
+            print(f"    {line}")
+    # The Claude Code hook that runs this script at every start.
+    if Claude().detected() and not claude_hook_installed():
+        print("! Claude Code: to allow new skills' tools at every start, install the hook once:")
+        print(f"    {python_command(a.os)} \"{os.path.join(ROOT, 'setup', 'install-claude-hook.py')}\"")
     return 1 if a.check and lacking else 0
 
 

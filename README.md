@@ -91,36 +91,44 @@ instructions file (`AGENTS.md`, `GEMINI.md`, `copilot-instructions.md`, …):
 ### Allow the skills' tools
 
 Agents must be allowed to run the tools the skills use, or the skills
-can't do their job. Each skill lists its tools in a `tools.json`
-(`{"tools": ["mado"]}`); after installing, and whenever a skill is added:
+can't do their job. Each skill lists its tools in a `tools.json`, with how
+to install them on macOS, Linux and Windows. After installing, and whenever
+a skill is added:
 
 ```sh
-python3 ~/sources/agent-behaviors/setup/allow-tools.py
+python3 ~/sources/agent-behaviors/setup/allow-tools.py      # Windows: py -3 ...
 ```
 
 It detects the agents on this machine and allows every listed tool where it
 can: Claude Code (`permissions.allow` in `~/.claude/settings.json`), Copilot
 in VS Code (`chat.tools.terminal.autoApprove` in the user settings) and Codex
-(a block of `prefix_rule`s in `~/.codex/rules/default.rules`). For agents it
-can't configure (Copilot CLI, Gemini CLI, Mistral Vibe, …) it says what to
-allow by hand. It never removes anything, and leaves a settings file with
-comments untouched. `--check` reports without changing anything; `--quiet`
-is silent when everything is allowed.
+(a block of `prefix_rule`s in `~/.codex/rules/default.rules`). It never
+removes anything, and leaves a settings file with comments untouched. It
+also prints, for your OS:
 
-To have Claude Code do it at every start, add this to the
-`SessionStart` hooks of `~/.claude/settings.json`:
+- the install commands of any tool that is not installed (Homebrew on
+  macOS; Homebrew, pacman or nix on Linux; scoop, cargo or npm on Windows);
+- for Mistral Vibe, the `Allow: <tool>` lines to add to each project's
+  `AGENTS.md` (a shell loop, or PowerShell on Windows, that adds each line
+  once);
+- for other agents it can't configure (Copilot CLI, Gemini CLI), what to
+  allow by hand;
+- the command that installs the Claude Code hook, if it is missing.
 
-```json
-{
-  "matcher": "startup|resume",
-  "hooks": [
-    {
-      "type": "command",
-      "command": "python3 /path/to/agent-behaviors/setup/allow-tools.py --quiet 2>/dev/null || true"
-    }
-  ]
-}
+`--check` reports without changing anything, `--quiet` prints only what
+needs doing, and `--os macos|linux|windows` gives another OS's commands.
+
+The Claude Code hook (saved in
+[setup/hooks/claude-session-start.json](setup/hooks/claude-session-start.json))
+runs `allow-tools.py --quiet` at every start, so new skills' tools are
+allowed without thinking of it. Install it once with:
+
+```sh
+python3 ~/sources/agent-behaviors/setup/install-claude-hook.py   # Windows: py -3 ...
 ```
+
+It adds the hook to `~/.claude/settings.json` once, keeps everything else,
+and backs the file up first (`settings.json.bak-agent-behaviors`).
 
 ## Running it on a loop
 

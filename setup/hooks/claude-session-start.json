@@ -1,0 +1,13 @@
+{
+  "_doc": "Claude Code SessionStart hook that runs setup/allow-tools.py at every start, so the tools of new skills get allowed. Installed by setup/install-claude-hook.py, which fills in {python} and {script} for the OS.",
+  "event": "SessionStart",
+  "matcher": "startup|resume",
+  "hook": {
+    "type": "command",
+    "statusMessage": "Allowing the skills' tools"
+  },
+  "command": {
+    "unix": "{python} \"{script}\" --quiet 2>/dev/null || true",
+    "windows": "{python} \"{script}\" --quiet"
+  }
+}

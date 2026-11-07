@@ -1,4 +1,64 @@
 {
-  "_doc": "Command-line tools this skill runs. setup/allow-tools.py allows them for every agent it detects.",
-  "tools": ["taplo"]
+  "_doc": "Command-line tools this skill runs. setup/allow-tools.py allows them for every agent it detects and, when one is not installed, prints how to install it: per OS (macos, linux, windows), the first alternative whose 'needs' command is available, else all of them.",
+  "tools": [
+    {
+      "name": "taplo",
+      "install": {
+        "macos": [
+          {
+            "needs": "brew",
+            "run": [
+              "brew install taplo"
+            ]
+          },
+          {
+            "needs": "cargo",
+            "run": [
+              "cargo install taplo-cli --locked"
+            ]
+          },
+          {
+            "needs": "npm",
+            "run": [
+              "npm install -g @taplo/cli"
+            ]
+          }
+        ],
+        "linux": [
+          {
+            "needs": "brew",
+            "run": [
+              "brew install taplo"
+            ]
+          },
+          {
+            "needs": "cargo",
+            "run": [
+              "cargo install taplo-cli --locked"
+            ]
+          },
+          {
+            "needs": "npm",
+            "run": [
+              "npm install -g @taplo/cli"
+            ]
+          }
+        ],
+        "windows": [
+          {
+            "needs": "cargo",
+            "run": [
+              "cargo install taplo-cli --locked"
+            ]
+          },
+          {
+            "needs": "npm",
+            "run": [
+              "npm install -g @taplo/cli"
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }

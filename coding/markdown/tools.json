@@ -1,4 +1,48 @@
 {
-  "_doc": "Command-line tools this skill runs. setup/allow-tools.py allows them for every agent it detects.",
-  "tools": ["mado"]
+  "_doc": "Command-line tools this skill runs. setup/allow-tools.py allows them for every agent it detects and, when one is not installed, prints how to install it: per OS (macos, linux, windows), the first alternative whose 'needs' command is available, else all of them.",
+  "tools": [
+    {
+      "name": "mado",
+      "install": {
+        "macos": [
+          {
+            "needs": "brew",
+            "run": [
+              "brew tap akiomik/mado https://github.com/akiomik/mado.git",
+              "brew install mado"
+            ]
+          }
+        ],
+        "linux": [
+          {
+            "needs": "brew",
+            "run": [
+              "brew tap akiomik/mado https://github.com/akiomik/mado.git",
+              "brew install mado"
+            ]
+          },
+          {
+            "needs": "pacman",
+            "run": [
+              "sudo pacman -S mado"
+            ]
+          },
+          {
+            "needs": "nix",
+            "run": [
+              "nix profile install github:akiomik/mado"
+            ]
+          }
+        ],
+        "windows": [
+          {
+            "needs": "scoop",
+            "run": [
+              "scoop install https://raw.githubusercontent.com/akiomik/mado/refs/heads/main/pkg/scoop/mado.json"
+            ]
+          }
+        ]
+      }
+    }
+  ]
 }
