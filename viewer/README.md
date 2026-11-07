@@ -57,11 +57,12 @@ can't do its job. Today that means:
 | [mado](https://github.com/akiomik/mado) | [coding/markdown](../coding/markdown/SKILL.md) |
 | [Taplo](https://github.com/tamasfe/taplo) (`taplo`) | [coding/toml](../coding/toml/SKILL.md) |
 
-When a skill is added or starts using a new tool, add the tool to this list
-and allow it in every agent's permissions (for Claude Code, e.g.
-`Bash(mado *)` and `Bash(taplo *)` in `~/.claude/settings.json`). The
-[Tools](../README.md#tools) section of the main README says how to install
-them.
+When a skill is added or starts using a new tool, list the tool in the
+skill's `tools.json` and in this table, then run
+[setup/allow-tools.py](../setup/allow-tools.py): it allows every listed tool
+in each agent it detects (Claude Code, Copilot in VS Code, Codex) and says
+what to allow by hand in the others. The [Tools](../README.md#tools) section
+of the main README says how to install them.
 
 ## Tests
 

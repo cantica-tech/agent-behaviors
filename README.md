@@ -88,6 +88,40 @@ instructions file (`AGENTS.md`, `GEMINI.md`, `copilot-instructions.md`, …):
 >
 > When writing or editing TOML, follow ~/sources/agent-behaviors/coding/toml/SKILL.md.
 
+### Allow the skills' tools
+
+Agents must be allowed to run the tools the skills use, or the skills
+can't do their job. Each skill lists its tools in a `tools.json`
+(`{"tools": ["mado"]}`); after installing, and whenever a skill is added:
+
+```sh
+python3 ~/sources/agent-behaviors/setup/allow-tools.py
+```
+
+It detects the agents on this machine and allows every listed tool where it
+can: Claude Code (`permissions.allow` in `~/.claude/settings.json`), Copilot
+in VS Code (`chat.tools.terminal.autoApprove` in the user settings) and Codex
+(a block of `prefix_rule`s in `~/.codex/rules/default.rules`). For agents it
+can't configure (Copilot CLI, Gemini CLI, Mistral Vibe, …) it says what to
+allow by hand. It never removes anything, and leaves a settings file with
+comments untouched. `--check` reports without changing anything; `--quiet`
+is silent when everything is allowed.
+
+To have Claude Code do it at every start, add this to the
+`SessionStart` hooks of `~/.claude/settings.json`:
+
+```json
+{
+  "matcher": "startup|resume",
+  "hooks": [
+    {
+      "type": "command",
+      "command": "python3 /path/to/agent-behaviors/setup/allow-tools.py --quiet 2>/dev/null || true"
+    }
+  ]
+}
+```
+
 ## Running it on a loop
 
 - Claude Code: `/loop 5m /session-status`

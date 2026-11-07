@@ -1,0 +1,4 @@
+{
+  "_doc": "Command-line tools this skill runs. setup/allow-tools.py allows them for every agent it detects.",
+  "tools": ["taplo"]
+}
