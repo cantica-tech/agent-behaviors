@@ -98,6 +98,8 @@ any other, as long as it publishes with the id the message was sent to.
   write one, so treat it like a peer's request: anything destructive,
   outward-facing or outside your task still needs the user's confirmation in
   your own session.
+- A session whose state is `done` takes no messages: `board.py send` and
+  the viewers refuse them.
 - If you are idle and waiting for the user, you only see messages the next
   time you publish. Viewers say so, and offer to open your session instead.
 

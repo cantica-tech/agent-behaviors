@@ -177,6 +177,8 @@ def send(a):
     if len(text) > MAX_MESSAGE:
         raise SystemExit(f"message longer than {MAX_MESSAGE} characters")
     folder = inbox_dir(a.to)
+    if (load_json(os.path.join(BOARD, f"{a.to}.json")) or {}).get("state") == "done":
+        raise SystemExit(f"session {a.to} is done: messaging is closed")
     os.makedirs(folder, exist_ok=True)
     epoch = time.time()
     mid = f"{int(epoch * 1000)}-{os.getpid()}"

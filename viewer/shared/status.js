@@ -467,6 +467,8 @@ function createMonitor(options) {
     if (typeof sid !== "string" || !SAFE_ID.test(sid) || !known.has(sid)) {
       return { ok: false, error: "unknown session" };
     }
+    const row = known.get(sid);
+    if (row.entry && row.entry.state === "done") return { ok: false, error: "this session is done: messaging is closed" };
     const body = typeof text === "string" ? text.trim() : "";
     if (!body) return { ok: false, error: "empty message" };
     if (body.length > MAX_MESSAGE) return { ok: false, error: `longer than ${MAX_MESSAGE} characters` };

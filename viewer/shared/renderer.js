@@ -156,6 +156,11 @@ const drafts = new Map();
  */
 function messageArea(row) {
   const area = el("div", "messaging");
+  if (row.entry && row.entry.state === "done") {
+    // A done session takes no more messages.
+    area.append(el("div", "k", "Done: messaging closed."));
+    return area;
+  }
   const draft = drafts.get(row.session) || { open: false, text: "", status: "" };
   drafts.set(row.session, draft);
   const inbox = row.inbox || {};
