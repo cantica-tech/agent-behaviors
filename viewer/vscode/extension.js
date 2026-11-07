@@ -96,6 +96,10 @@ function attachWebview(webview, context) {
   webviews.add(webview);
   const sub = webview.onDidReceiveMessage((msg) => {
     if (msg.type === "ready" && latest) webview.postMessage({ type: "status", snapshot: latest });
+    if (msg.type === "openPath" && monitor && monitor.isOpenablePath(msg.path)) {
+      // Folders open in Finder / the file manager, files in their default app.
+      vscode.env.openExternal(vscode.Uri.file(msg.path));
+    }
     if (msg.type === "saveSettings") {
       const result = monitor ? monitor.saveSettings(msg.values) : { ok: false, error: "not running" };
       webview.postMessage({ type: "saveResult", id: msg.id, result });

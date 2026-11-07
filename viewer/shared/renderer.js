@@ -110,6 +110,7 @@ function card(row) {
   if (name) ident.append(el("span", "k", "name "), el("span", "name", name), document.createTextNode(" · "));
   ident.append(el("span", "k", "id "), el("span", "sid", row.session));
   node.append(ident);
+  node.append(linksLine(row));
 
   const task = e.task || (u.title ? `(title) ${u.title}` : "");
   if (task) node.append(el("div", "task", task));
@@ -139,6 +140,43 @@ function card(row) {
     node.append(list);
   }
   return node;
+}
+
+/** What each link is called, and what to say when its target is gone or unknown. */
+const LINK_LABELS = {
+  context: ["context folder", "context folder no longer available", "context folder unknown"],
+  memory: ["memory", "memory no longer available (none saved, or removed)", "no memory location known"],
+};
+
+/**
+ * Build the line with links to a session's context folder and memory. A
+ * link opens the location (in Finder, or the default app for a file); a
+ * location that is gone or unknown is described in plain text instead.
+ * @param {object} row Joined row with `links` from the monitor.
+ * @returns {HTMLElement} The line.
+ */
+function linksLine(row) {
+  const line = el("div", "links");
+  const links = row.links || {};
+  for (const [key, [label, gone, unknown]] of Object.entries(LINK_LABELS)) {
+    const link = links[key] || {};
+    if (line.childNodes.length) line.append(document.createTextNode(" · "));
+    if (link.exists) {
+      const a = el("a", null, label);
+      a.href = "#";
+      a.title = link.path;
+      a.addEventListener("click", (event) => {
+        event.preventDefault();
+        window.statusApi.openPath(link.path);
+      });
+      line.append(a);
+    } else {
+      const text = el("span", "gone", link.path ? gone : unknown);
+      if (link.path) text.title = link.path;
+      line.append(text);
+    }
+  }
+  return line;
 }
 
 /** Note that carries a session's reachable name, as published per SKILL.md: "name: <name>". */

@@ -36,6 +36,51 @@ const SETTING_RANGES = {
 };
 
 /**
+ * Find a session's context folder and memory by its id, for sessions with a
+ * board entry but no usage record (usage.py reports paths for the others).
+ * Only the stores laid out by session id can be found this way.
+ * @param {string} agent Agent name from the board entry.
+ * @param {string} sid Session id.
+ * @returns {{context_dir: string|null, memory: string|null}} Paths, or nulls.
+ */
+function locateById(agent, sid) {
+  const home = os.homedir();
+  if (agent === "claude-code") {
+    const projects = path.join(home, ".claude", "projects");
+    let names = [];
+    try {
+      names = fs.readdirSync(projects);
+    } catch {
+      return { context_dir: null, memory: null };
+    }
+    for (const name of names) {
+      const dir = path.join(projects, name);
+      if (fs.existsSync(path.join(dir, `${sid}.jsonl`))) {
+        return { context_dir: dir, memory: path.join(dir, "memory") };
+      }
+    }
+  }
+  if (agent === "copilot") {
+    // Copilot's memory folder is shared by its sessions (same as usage.py's COPILOT_MEMORY).
+    const memory = [
+      path.join(home, "Library/Application Support/Code/User/globalStorage/github.copilot-chat/memory-tool/memories"),
+      path.join(home, ".config/Code/User/globalStorage/github.copilot-chat/memory-tool/memories"),
+    ].find((p) => fs.existsSync(p)) || null;
+    return { context_dir: path.join(home, ".copilot", "session-state", sid), memory };
+  }
+  return { context_dir: null, memory: null };
+}
+
+/**
+ * Describe a context or memory location for the viewers.
+ * @param {string|null} p Path, or null when unknown.
+ * @returns {{path: string|null, exists: boolean}} The path and whether it is still there.
+ */
+function location(p) {
+  return { path: p || null, exists: Boolean(p) && fs.existsSync(p) };
+}
+
+/**
  * When a board entry reached "done", in epoch seconds: its done_epoch, else
  * (entries published before done_at existed) its last update.
  * @param {object} e Board entry.
@@ -163,6 +208,8 @@ function createMonitor(options) {
   let settingsWatcher = null;
   let boardTimer = null;
   let usageTimer = null;
+  /** Context and memory paths in the latest snapshot: the only ones openPath may open. */
+  const paths = new Set();
 
   /**
    * Re-read the settings file if it changed. A file that is not valid JSON
@@ -280,9 +327,15 @@ function createMonitor(options) {
       row.usage = u;
       rows.set(sid, row);
     }
+    paths.clear();
     for (const row of rows.values()) {
       const e = row.entry;
       const u = row.usage;
+      // Context folder and memory: from usage.py, else looked up by session id.
+      const found = u ? { context_dir: u.context_dir, memory: u.memory } :
+        locateById(e && e.agent, row.session);
+      row.links = { context: location(found.context_dir), memory: location(found.memory) };
+      for (const link of Object.values(row.links)) if (link.exists) paths.add(link.path);
       // An entry is stale when the session has been active since it last
       // published. A done session is never stale: its activity after reporting
       // done (e.g. the final reply) doesn't make the entry out of date.
@@ -360,6 +413,15 @@ function createMonitor(options) {
     snapshot,
     refresh,
     saveSettings,
+    /**
+     * Whether ``p`` is a context or memory path of the latest snapshot that
+     * still exists; hosts open only such paths.
+     * @param {string} p Path asked for by the page.
+     * @returns {boolean} True when it may be opened.
+     */
+    isOpenablePath(p) {
+      return typeof p === "string" && paths.has(p) && fs.existsSync(p);
+    },
     dispose() {
       disposed = true;
       clearTimeout(pushTimer);

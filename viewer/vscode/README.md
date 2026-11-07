@@ -11,6 +11,8 @@ the same view as the [Electron viewer](../README.md).
   sidebar, with Refresh and "open in editor" buttons in its title bar. Its
   badge shows the number of reporting sessions, and nothing when there are
   none.
+- Each card links to the session's context folder and memory; a location
+  that is gone or unknown is described instead.
 - The status bar shows how many sessions are working, waiting or blocked.
   Click it to open the panel.
 

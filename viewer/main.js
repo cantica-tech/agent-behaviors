@@ -6,7 +6,7 @@
  * ../session-status/scripts/usage.py. Read-only towards the board.
  */
 
-const { app, BrowserWindow, ipcMain, nativeImage } = require("electron");
+const { app, BrowserWindow, ipcMain, nativeImage, shell } = require("electron");
 const path = require("path");
 const { createMonitor } = require("./shared/status");
 
@@ -47,6 +47,9 @@ function createWindow() {
   win.loadFile(path.join(__dirname, "index.html"));
   win.webContents.on("did-finish-load", () => send(monitor.snapshot()));
 }
+
+ipcMain.handle("open-path", (_event, p) =>
+  monitor.isOpenablePath(p) ? shell.openPath(p) : "not a context or memory path of the current status");
 
 ipcMain.handle("save-settings", (_event, values) => monitor.saveSettings(values));
 

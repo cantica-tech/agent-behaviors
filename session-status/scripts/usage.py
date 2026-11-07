@@ -10,7 +10,10 @@ Usage: usage.py [--exclude <session-id-prefix>] [--hours N] [--agent NAME]
 Prints one JSON object per session, most recent first, with: agent, session,
 model, cwd, title, first, last, idle_minutes, calls, output, input,
 cache_read, cache_write, context (latest context size, when the store gives
-it), total, delta_output / delta_total / delta_calls since the previous run.
+it), total, delta_output / delta_total / delta_calls since the previous run,
+context_dir (the folder holding the session's context in its agent's store)
+and memory (the agent's memory folder or file for that session); either is
+null when the store gives no path, and may no longer exist.
 Previous-run state: ~/.agent-behaviors/status/.usage-<NAME>.json (default
 NAME: "last"), so each caller gets its own deltas. --model keeps only the
 sessions whose model has the same key as board.py model-key.
@@ -28,6 +31,13 @@ import time
 HOME = os.path.expanduser("~")
 #: Directory holding the previous-run state files.
 STATE_DIR = os.path.join(HOME, ".agent-behaviors", "status")
+#: Copilot's memory folder (VS Code Copilot Chat memory tool), macOS then Linux.
+COPILOT_MEMORY = next((p for p in (
+    os.path.join(HOME, "Library/Application Support/Code/User/globalStorage/github.copilot-chat/memory-tool/memories"),
+    os.path.join(HOME, ".config/Code/User/globalStorage/github.copilot-chat/memory-tool/memories"),
+) if os.path.exists(p)), None)
+#: Gemini CLI's memory file (written by its save_memory tool).
+GEMINI_MEMORY = os.path.join(HOME, ".gemini", "GEMINI.md")
 
 
 def model_key(model):
@@ -37,11 +47,16 @@ def model_key(model):
     return m or "unknown"
 
 
-def blank(agent, sid, path):
-    """Return an empty usage record for session ``sid`` read from ``path``."""
+def blank(agent, sid, path, context_dir=None, memory=None):
+    """Return an empty usage record for session ``sid`` read from ``path``.
+
+    ``context_dir`` and ``memory`` are the session's context folder and its
+    agent's memory folder or file, when known.
+    """
     return dict(agent=agent, session=sid, model=None, cwd=None, title="",
                 first=None, last=None, mtime=os.path.getmtime(path), calls=0,
-                output=0, input=0, cache_read=0, cache_write=0, context=None)
+                output=0, input=0, cache_read=0, cache_write=0, context=None,
+                context_dir=context_dir, memory=memory)
 
 
 def jsonl(path):
@@ -67,7 +82,9 @@ def claude_code(since):
     for f in glob.glob(f"{HOME}/.claude/projects/*/*.jsonl"):
         if os.path.getmtime(f) < since:
             continue
-        s = blank("claude-code", os.path.basename(f)[:-6], f)
+        project = os.path.dirname(f)
+        s = blank("claude-code", os.path.basename(f)[:-6], f,
+                  context_dir=project, memory=os.path.join(project, "memory"))
         seen = set()
         for d in jsonl(f):
             s["cwd"] = s["cwd"] or d.get("cwd")
@@ -101,7 +118,8 @@ def copilot(since):
     for f in glob.glob(f"{HOME}/.copilot/session-state/*/events.jsonl"):
         if os.path.getmtime(f) < since:
             continue
-        s = blank("copilot", os.path.basename(os.path.dirname(f)), f)
+        s = blank("copilot", os.path.basename(os.path.dirname(f)), f,
+                  context_dir=os.path.dirname(f), memory=COPILOT_MEMORY)
         for d in jsonl(f):
             stamp(s, d.get("timestamp"))
             t, data = d.get("type"), d.get("data") or {}
@@ -128,22 +146,27 @@ def codex(since):
 
     Codex stores only a cumulative token count, returned as ``total``.
     """
+    memory = next(iter(sorted(glob.glob(f"{HOME}/.codex/memories_*.sqlite"))), None)
     for db in glob.glob(f"{HOME}/.codex/state_*.sqlite"):
+        query = ("select id, cwd, title, model, tokens_used, created_at, updated_at, {rollout}"
+                 " from threads where archived = 0 and updated_at >= ?")
         try:
             con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
-            rows = con.execute(
-                "select id, cwd, title, model, tokens_used, created_at, updated_at"
-                " from threads where archived = 0 and updated_at >= ?",
-                (int(since),)).fetchall()
+            try:
+                rows = con.execute(query.format(rollout="rollout_path"), (int(since),)).fetchall()
+            except sqlite3.OperationalError:  # older schema without rollout_path
+                rows = con.execute(query.format(rollout="null"), (int(since),)).fetchall()
         except sqlite3.Error:
             continue
-        for sid, cwd, title, model, tokens, created, updated in rows:
+        for sid, cwd, title, model, tokens, created, updated, rollout in rows:
             iso = lambda t: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
             yield dict(agent="codex", session=sid, model=model, cwd=cwd,
                        title=(title or "")[:120], first=iso(created),
                        last=iso(updated), mtime=updated, calls=None,
                        output=None, input=None, cache_read=None,
-                       cache_write=None, context=None, total=tokens)
+                       cache_write=None, context=None, total=tokens,
+                       context_dir=os.path.dirname(rollout) if rollout else None,
+                       memory=memory)
 
 
 # --- Gemini CLI: ~/.gemini/tmp/<hash>/chats/session-*.json (untested) -------
@@ -156,7 +179,8 @@ def gemini(since):
             doc = json.load(open(f))
         except (OSError, ValueError):
             continue
-        s = blank("gemini", doc.get("sessionId") or os.path.basename(f)[:-5], f)
+        s = blank("gemini", doc.get("sessionId") or os.path.basename(f)[:-5], f,
+                  context_dir=os.path.dirname(os.path.dirname(f)), memory=GEMINI_MEMORY)
         stamp(s, doc.get("startTime"))
         stamp(s, doc.get("lastUpdated"))
         for m in doc.get("messages", []):

@@ -40,6 +40,14 @@
       return new Promise((resolve) => pending.set(id, resolve));
     },
     /**
+     * Open a session's context folder or memory. The extension opens only
+     * paths shown in the current status.
+     * @param {string} p Path from a snapshot's `links`.
+     */
+    openPath(p) {
+      vscode.postMessage({ type: "openPath", path: p });
+    },
+    /**
      * Ask the extension to re-run usage.py. The fresh snapshot arrives through
      * onStatus, so this resolves with the latest one already shown.
      * @returns {Promise<object>} A promise that never rejects.

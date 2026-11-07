@@ -21,4 +21,11 @@ contextBridge.exposeInMainWorld("statusApi", {
    * @returns {Promise<{ok: boolean, error?: string}>} The outcome.
    */
   saveSettings: (values) => ipcRenderer.invoke("save-settings", values),
+  /**
+   * Open a session's context folder or memory (Finder, or the default app
+   * for a file). Only paths shown in the current status are opened.
+   * @param {string} p Path from a snapshot's `links`.
+   * @returns {Promise<string>} Empty on success, else the error.
+   */
+  openPath: (p) => ipcRenderer.invoke("open-path", p),
 });

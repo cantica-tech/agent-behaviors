@@ -10,6 +10,9 @@ usage from [usage.py](../session-status/scripts/usage.py). Sessions with
 usage but no board entry appear as `unreported`. The header pills show
 whether each `<model>.status` background session is alive.
 
+Each card links to the session's context folder (where its agent keeps the
+session) and its memory; when one is gone or unknown, the card says so.
+
 The board refreshes as soon as a file changes. How often it also polls the
 board and re-measures usage is set in `~/.agent-behaviors/session-status.json`
 (`viewerBoardSeconds`, `viewerUsageSeconds`); a valid edit applies at once.
