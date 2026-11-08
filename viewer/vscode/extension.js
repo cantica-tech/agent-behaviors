@@ -297,8 +297,10 @@ function html(webview, media) {
 </head>
 <body>
   <header>
-    <h1>Agent Status</h1>
-    <span id="meta">Loading…</span>
+    <div class="titleline">
+      <h1>Agent Status</h1>
+      <span id="meta">Loading…</span>
+    </div>
     <div class="filters">
       <label><input type="checkbox" id="showUnreported" checked> show unreported</label>
       <label><input type="checkbox" id="hideDone"> hide done</label>

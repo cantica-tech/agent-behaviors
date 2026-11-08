@@ -82,6 +82,15 @@ body.vscode-light button, body.vscode-dark button, body.vscode-high-contrast but
   .grid { grid-template-columns: repeat(2, 1fr); }
 }
 
+/* VS Code: title and status on a line of their own, controls on the next. */
+.titleline { flex-basis: 100%; display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.titleline h1 { white-space: nowrap; }
+.titleline #meta { flex: 1; overflow-wrap: anywhere; }
+@media (max-width: 420px) {
+  .titleline h1 { display: block; }
+  .titleline #meta { flex-basis: auto; order: 0; }
+}
+
 /* Settings panel (header "Settings" button). */
 .settings-panel { margin: 10px 18px 0; padding: 12px 14px; background: var(--card);
   border: 1px solid var(--line); border-radius: 10px; }

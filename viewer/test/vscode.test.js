@@ -247,6 +247,8 @@ test("panel: opened once then revealed; HTML has a nonce CSP and local resources
   assert.match(html, /webview:\/ext\/media\/styles\.css/);
   assert.match(html, /webview:\/ext\/media\/bridge\.js/);
   assert.match(html, /webview:\/ext\/media\/renderer\.js/);
+  assert.match(html, /<div class="titleline">\s*<h1>Agent Status<\/h1>\s*<span id="meta">/, "title and status on a line of their own");
+  assert.ok(html.indexOf('class="titleline"') < html.indexOf('class="filters"'), "controls come after the title line");
   assert.match(html, /id="showUnreported"/);
   assert.match(html, /id="hideDone"/);
   assert.deepEqual(rec.panels[0].opts.localResourceRoots.map((u) => u.fsPath), [path.join("/ext", "media")]);
