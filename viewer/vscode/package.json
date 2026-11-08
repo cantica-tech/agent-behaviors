@@ -2,7 +2,7 @@
   "name": "agent-status",
   "displayName": "Agent Status",
   "description": "Live status of the agent sessions on this machine, from the agent-behaviors session-status board.",
-  "version": "0.9.3",
+  "version": "0.10.0",
   "publisher": "canticatech",
   "icon": "media/icon.png",
   "license": "UNLICENSED",
@@ -114,6 +114,11 @@
     },
     "views": {
       "agentStatus": [
+        {
+          "id": "agentStatus.summary",
+          "name": "Summary",
+          "icon": "media/viewer.svg"
+        },
         {
           "type": "webview",
           "id": "agentStatus.sidebar",

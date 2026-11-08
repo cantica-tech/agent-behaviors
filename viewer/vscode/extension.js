@@ -17,8 +17,10 @@ const { createMonitor, DEFAULT_SETTINGS_FILE } = require("./media/status");
 let panel = null;
 /** Every live webview showing the view (editor panel and activity-bar view). */
 const webviews = new Set();
-/** The activity-bar view once VS Code has resolved it, for its badge; or null. */
-let sidebarView = null;
+/** The Summary tree view: created at activation, so its badge shows from startup. */
+let summaryView = null;
+/** Data provider of the Summary tree view. */
+let summary = null;
 /** The running status monitor, or null. */
 let monitor = null;
 /** Status-bar item with the session summary. */
@@ -66,6 +68,7 @@ function onSnapshot(snap) {
   latest = snap;
   updateStatusBar(snap);
   updateBadge(snap);
+  if (summary) summary.refresh();
   for (const webview of webviews) webview.postMessage({ type: "status", snapshot: snap });
 }
 
@@ -76,9 +79,9 @@ function onSnapshot(snap) {
  * @param {object} snap Snapshot from the monitor.
  */
 function updateBadge(snap) {
-  if (!sidebarView) return;
+  if (!summaryView) return;
   const reporting = snap.rows.filter((r) => r.entry).length;
-  sidebarView.badge = reporting
+  summaryView.badge = reporting
     ? { value: reporting, tooltip: `${reporting} reporting agent session${reporting === 1 ? "" : "s"}` }
     : undefined;
 }
@@ -197,12 +200,62 @@ class SidebarProvider {
    */
   resolveWebviewView(view) {
     const detach = attachWebview(view.webview, this.context);
-    sidebarView = view;
-    if (latest) updateBadge(latest);
-    view.onDidDispose(() => {
-      detach.dispose();
-      if (sidebarView === view) sidebarView = null;
+    view.onDidDispose(() => detach.dispose());
+  }
+}
+
+/** Sort rank per state in the Summary view; lower shows first. */
+const SUMMARY_ORDER = { waiting: 0, working: 1, idle: 2, unreported: 3, done: 4 };
+
+/**
+ * Data of the Summary tree view: one line per session (state, project, task).
+ * The view exists from activation, which is what lets the activity-bar badge
+ * show the reporting count as soon as VS Code starts.
+ * @implements {vscode.TreeDataProvider}
+ */
+class SummaryProvider {
+  constructor() {
+    /** Fires when the rows change. */
+    this.emitter = new vscode.EventEmitter();
+    /** Event VS Code listens to. */
+    this.onDidChangeTreeData = this.emitter.event;
+  }
+
+  /** Tell VS Code the rows changed. */
+  refresh() {
+    this.emitter.fire();
+  }
+
+  /**
+   * Rows of the latest snapshot, blocked and waiting first.
+   * @returns {object[]} Rows.
+   */
+  getChildren() {
+    if (!latest) return [];
+    const state = (r) => (r.entry && r.entry.state) || "unreported";
+    return latest.rows.slice().sort((a, b) => {
+      const blocked = Number(Boolean(b.entry && b.entry.blocker)) - Number(Boolean(a.entry && a.entry.blocker));
+      return blocked || (SUMMARY_ORDER[state(a)] ?? 2) - (SUMMARY_ORDER[state(b)] ?? 2);
     });
+  }
+
+  /**
+   * One line for a session; clicking it opens the full view.
+   * @param {object} row Joined row.
+   * @returns {vscode.TreeItem} The item.
+   */
+  getTreeItem(row) {
+    const e = row.entry || {};
+    const u = row.usage || {};
+    const state = e.state || "unreported";
+    const project = (e.cwd || u.cwd || "").split(/[\\/]/).pop() || "?";
+    const item = new vscode.TreeItem(`${project} · ${state}`);
+    item.id = row.session;
+    item.description = e.blocker ? `blocked: ${e.blocker}` : e.task || (u.title ? `(title) ${u.title}` : "");
+    item.tooltip = `${e.agent || u.agent || "?"} · ${e.model || u.model || "?"}\n${row.session}${e.task ? `\n${e.task}` : ""}`;
+    item.iconPath = new vscode.ThemeIcon(e.blocker ? "warning" : { working: "sync", waiting: "bell", idle: "debug-pause", done: "check" }[state] || "circle-outline");
+    item.command = { command: "agentStatus.open", title: "Open Agent Status" };
+    return item;
   }
 }
 
@@ -220,6 +273,8 @@ function startMonitor(context) {
     usageState: "vscode",
     onChange: onSnapshot,
   });
+  // Show the counts right away: the board is read synchronously; usage follows.
+  onSnapshot(monitor.snapshot());
 }
 
 /**
@@ -292,8 +347,11 @@ function openPanel(context) {
 function activate(context) {
   statusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   statusItem.command = "agentStatus.open";
+  summary = new SummaryProvider();
+  summaryView = vscode.window.createTreeView("agentStatus.summary", { treeDataProvider: summary });
   context.subscriptions.push(
     statusItem,
+    summaryView,
     vscode.commands.registerCommand("agentStatus.open", () => openPanel(context)),
     vscode.commands.registerCommand("agentStatus.refresh", () => monitor && monitor.refresh()),
     vscode.commands.registerCommand("agentStatus.openSettings", async () => {
@@ -329,6 +387,10 @@ module.exports = {
     openSession,
     html,
     SidebarProvider,
+    SummaryProvider,
+    get summaryView() {
+      return summaryView;
+    },
     get monitor() {
       return monitor;
     },

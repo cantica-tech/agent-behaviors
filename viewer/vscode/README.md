@@ -7,10 +7,12 @@ the same view as the [Electron viewer](../README.md).
 - **Agent Status: Open Agent Status** opens the panel: one card per session
   with state, project, task, blocker, items left, ETA, projected and measured
   tokens, items and notes.
-- The **Agent Status** icon in the activity bar opens the same view in the
-  sidebar, with Refresh and "open in editor" buttons in its title bar. Its
-  badge shows the number of reporting sessions, and nothing when there are
-  none.
+- The **Agent Status** icon in the activity bar opens the sidebar: a
+  **Summary** (one line per session: project, state, task or blocker;
+  click one to open the full view) and **Sessions**, the same view as the
+  panel, with Refresh and "open in editor" buttons in its title bar. The
+  icon's badge shows the number of reporting sessions from the moment VS
+  Code starts, and nothing when there are none.
 - Each card links to the session's context folder and memory; a location
   that is gone or unknown is described instead.
 - **Message…** on a card sends a prompt to that agent's inbox (any agent

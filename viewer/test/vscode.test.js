@@ -33,7 +33,7 @@ function fakeWebview() {
 function fakes(settings = {}) {
   const rec = { commands: {}, executed: [], externals: [], terminals: [], panels: [], providers: {}, shown: [], infos: [], errors: [],
     clipboard: [], monitors: [], available: ["claude-vscode.editor.open", "workbench.action.chat.open", "mistral-vibe-code.open", "chatgpt.openSidebar"],
-    configListeners: [] };
+    configListeners: [], trees: {} };
   const conf = { showStatusBar: true, python: "python3", boardDirectory: "", usageScript: "", chatCommands: {
     claude: { command: "claude-vscode.editor.open", withSession: true },
     copilot: { command: "workbench.action.chat.open" },
@@ -57,7 +57,25 @@ function fakes(settings = {}) {
         this.id = id;
       }
     },
-    ThemeIcon: class {},
+    ThemeIcon: class {
+      constructor(id) {
+        this.id = id;
+      }
+    },
+    TreeItem: class {
+      constructor(label) {
+        this.label = label;
+      }
+    },
+    EventEmitter: class {
+      constructor() {
+        this.fired = 0;
+        this.event = () => ({ dispose() {} });
+      }
+      fire() {
+        this.fired++;
+      }
+    },
     StatusBarAlignment: { Left: 1 },
     ViewColumn: { Active: -1 },
     workspace: {
@@ -73,6 +91,7 @@ function fakes(settings = {}) {
         rec.panels.push(panel);
         return panel;
       },
+      createTreeView: (id, opts) => ((rec.trees[id] = { id, provider: opts.treeDataProvider, dispose() {} }), rec.trees[id]),
       registerWebviewViewProvider: (id, provider, opts) => ((rec.providers[id] = { provider, opts }), { dispose() {} }),
       createTerminal: (opts) => {
         const term = { opts, sent: [], shown: false, show() { this.shown = true; }, sendText(t) { this.sent.push(t); } };
@@ -100,7 +119,7 @@ function fakes(settings = {}) {
     DEFAULT_SETTINGS_FILE: "/home/.agent-behaviors/session-status.json",
     createMonitor: (opts) => {
       const m = { opts, calls: [], agent: null, target: null, disposed: false,
-        snapshot: () => ({ rows: [], settingsFile: "/cfg/s.json" }),
+        snapshot: () => ({ rows: rec.initialRows || [], settingsFile: "/cfg/s.json" }),
         refresh: () => m.calls.push("refresh"),
         saveSettings: (v) => ({ ok: true, v }),
         sendMessage: (s, t) => ({ ok: true, s, t }),
@@ -120,8 +139,9 @@ function fakes(settings = {}) {
  * @param {object} [settings] agentStatus settings.
  * @returns {object} {ext, rec, conf, monitor, context}.
  */
-function activate(settings) {
+function activate(settings, initialRows) {
   const f = fakes(settings);
+  f.rec.initialRows = initialRows;
   const ext = loadWithMocks("vscode/extension.js", { vscode: f.vscode, "./media/status": f.statusModule });
   const context = { extensionPath: "/ext", extensionUri: f.vscode.Uri.file("/ext"), subscriptions: [] };
   ext.activate(context);
@@ -164,22 +184,53 @@ test("status bar: working/waiting/blocked counts, warning colour, hide setting",
   assert.equal(rec.status.visible, false);
 });
 
-test("sidebar: resolves the view, badge counts reporting sessions, none at 0", () => {
-  const { rec, monitor, vscode } = activate();
+test("counts show at activation: status bar and badge from the first, synchronous snapshot", () => {
+  const { rec } = activate({}, [row("a", "working"), row("b", "idle"), row("c", null)]);
+  assert.equal(rec.status.text, "$(pulse) 1 working", "status bar set before any timer or usage.py run");
+  assert.equal(rec.status.visible, true);
+  assert.deepEqual(rec.trees["agentStatus.summary"].badge, { value: 2, tooltip: "2 reporting agent sessions" },
+    "badge set at activation, without opening the sidebar");
+});
+
+test("badge: counts reporting sessions, singular tooltip, none at 0", () => {
+  const { rec, monitor } = activate();
+  const tree = rec.trees["agentStatus.summary"];
+  assert.equal(tree.badge, undefined, "no badge when nobody reports");
+  monitor().opts.onChange({ rows: [row("a", "working")] });
+  assert.deepEqual(tree.badge, { value: 1, tooltip: "1 reporting agent session" });
+  monitor().opts.onChange({ rows: [row("c", null)] });
+  assert.equal(tree.badge, undefined);
+});
+
+test("Summary view: one line per session, blocked and waiting first, refreshed on change", () => {
+  const { rec, monitor } = activate();
+  const provider = rec.trees["agentStatus.summary"].provider;
+  const fired = provider.emitter.fired;
+  monitor().opts.onChange({ rows: [
+    { session: "u", entry: null, usage: { agent: "copilot", cwd: "/x/repo", title: "fix" } },
+    { session: "w", entry: { state: "working", cwd: "/p/proj", task: "build", agent: "claude-code", model: "m" } },
+    { session: "b", entry: { state: "working", cwd: "/p/other", blocker: "needs input" } },
+    { session: "q", entry: { state: "waiting", cwd: "/p/wait" } },
+  ] });
+  assert.ok(provider.emitter.fired > fired, "tree refreshed");
+  const items = provider.getChildren().map((r) => provider.getTreeItem(r));
+  assert.deepEqual(items.map((i) => i.label), ["other · working", "wait · waiting", "proj · working", "repo · unreported"]);
+  assert.equal(items[0].description, "blocked: needs input");
+  assert.equal(items[0].iconPath.id, "warning");
+  assert.equal(items[2].description, "build");
+  assert.match(items[2].tooltip, /claude-code · m\nw\nbuild/);
+  assert.equal(items[3].description, "(title) fix");
+  assert.equal(items[2].command.command, "agentStatus.open");
+  assert.equal(items[2].id, "w");
+});
+
+test("sidebar webview: filled when VS Code resolves it", () => {
+  const { rec } = activate();
   const view = { webview: fakeWebview(), onDidDispose(fn) { this.disposeFn = fn; } };
-  monitor().opts.onChange({ rows: [row("a", "working"), row("b", "idle"), row("c", null)] });
   rec.providers["agentStatus.sidebar"].provider.resolveWebviewView(view);
-  assert.deepEqual(view.badge, { value: 2, tooltip: "2 reporting agent sessions" });
   assert.equal(view.webview.options.enableScripts, true);
   assert.match(view.webview.html, /Content-Security-Policy/);
-  monitor().opts.onChange({ rows: [row("a", "working")] });
-  assert.equal(view.badge.tooltip, "1 reporting agent session");
-  monitor().opts.onChange({ rows: [row("c", null)] });
-  assert.equal(view.badge, undefined);
-  assert.ok(vscode);
   view.disposeFn();
-  monitor().opts.onChange({ rows: [row("a", "working")] });
-  assert.equal(view.badge, undefined, "no updates after the view is disposed");
 });
 
 test("panel: opened once then revealed; HTML has a nonce CSP and local resources", () => {
@@ -326,13 +377,13 @@ test("openSession: chatCommands can add agents (e.g. Grok)", async () => {
 test("Open Settings File: opens the settings file, reports failures", async () => {
   const a = activate();
   await a.rec.commands["agentStatus.openSettings"]();
-  assert.deepEqual(a.rec.shown, ["/home/.agent-behaviors/session-status.json"], "default before any snapshot");
-  a.monitor().opts.onChange({ rows: [], settingsFile: "/cfg/s.json" });
+  assert.deepEqual(a.rec.shown, ["/cfg/s.json"], "the snapshot's file, available from activation");
+  a.monitor().opts.onChange({ rows: [] });
   await a.rec.commands["agentStatus.openSettings"]();
-  assert.equal(a.rec.shown.at(-1), "/cfg/s.json");
+  assert.equal(a.rec.shown.at(-1), "/home/.agent-behaviors/session-status.json", "default when the snapshot has none");
   a.rec.showFails = true;
   await a.rec.commands["agentStatus.openSettings"]();
-  assert.match(a.rec.errors.at(-1), /cannot open \/cfg\/s.json: nope/);
+  assert.match(a.rec.errors.at(-1), /cannot open \/home\/.agent-behaviors\/session-status.json: nope/);
 });
 
 test("refresh command, configuration change restarts the monitor, dispose stops it", () => {
