@@ -5,7 +5,7 @@
   "version": "0.10.1",
   "publisher": "canticatech",
   "icon": "media/icon.png",
-  "license": "UNLICENSED",
+  "license": "Apache-2.0",
   "private": true,
   "repository": {
     "type": "git",
@@ -150,7 +150,8 @@
   "scripts": {
     "sync": "node scripts/sync.js",
     "vscode:prepublish": "node scripts/sync.js",
-    "package": "npx --yes @vscode/vsce@3.2.1 package --no-dependencies --allow-missing-repository --skip-license",
-    "test": "cd .. && node --test test/"
+    "package": "npx --yes @vscode/vsce@3.2.1 package --no-dependencies --allow-missing-repository",
+    "test": "cd .. && node --test test/",
+    "publish": "npx --yes @vscode/vsce@3.2.1 publish --no-dependencies --allow-missing-repository"
   }
 }

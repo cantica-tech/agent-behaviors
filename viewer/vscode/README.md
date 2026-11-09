@@ -58,3 +58,28 @@ cd viewer/vscode
 
 `install.sh` finds the `code` CLI on the `PATH` or inside `VS Code.app`; set
 `CODE_CLI` to use another one. Reload VS Code windows afterwards.
+
+## Release to the Marketplace
+
+The tasks in [../Taskfile.yml](../Taskfile.yml) (`task --list` in `viewer/`)
+follow catalyst-ui's. The version lives in `viewer/version.txt`, and both
+`package.json` files must agree with it.
+
+```sh
+cd viewer
+task version:set VERSION=x.y.z   # version.txt and both package.json
+task test
+git commit -am "Agent Status x.y.z" && git push
+git tag agent-status-vx.y.z && git push origin agent-status-vx.y.z
+task publish:vscode-extension:release
+```
+
+`publish:vscode-extension:release` refuses unless HEAD is exactly the tag
+`agent-status-v<version>` and the tests pass. Publishing needs a Marketplace
+token for the `canticatech` publisher: `VSCE_PAT`, or a macOS keychain item
+named by `VSCE_KEYCHAIN_SERVICE` and `VSCE_KEYCHAIN_ACCOUNT`, as for
+catalyst-ui.
+
+## License
+
+Apache License 2.0: see [LICENSE](LICENSE) and [NOTICE](NOTICE).
