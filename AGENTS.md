@@ -21,6 +21,7 @@ when a skill adds a tool, run the `AGENTS.md` command that
 
 ## Rules
 
-- Write in `~/.agent-behaviors`, never execute anything stored there: run
-  the skills' scripts from this repository.
+- Write in `~/.agent-behaviors`; execute only the skills' scripts under
+  `~/.agent-behaviors/skills/` (or from this repository), never anything
+  else stored there.
 - Status updates are silent and need no authorization.

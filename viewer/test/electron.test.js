@@ -17,7 +17,8 @@ const { ROOT, tmp, loadWithMocks } = require("./helpers");
  * @returns {object} The fakes: {electron, childProcess, statusModule, rec, monitor}.
  */
 function fakes() {
-  const rec = { handlers: {}, windows: [], sent: [], opened: [], clipboard: [], execFile: [], spawned: [], dock: null, appEvents: {} };
+  const rec = { handlers: {}, windows: [], sent: [], opened: [], clipboard: [], execFile: [], spawned: [], dock: null, appEvents: {},
+    boxes: [], installed: [] };
   let nextId = 1;
   class BrowserWindow {
     constructor(opts) {
@@ -42,13 +43,17 @@ function fakes() {
     }
   }
   const electron = {
-    app: { whenReady: () => Promise.resolve(), on: (ev, fn) => (rec.appEvents[ev] = fn), dock: { setIcon: (i) => (rec.dock = i) }, quit() {} },
+    app: { whenReady: () => Promise.resolve(), on: (ev, fn) => (rec.appEvents[ev] = fn), dock: { setIcon: (i) => (rec.dock = i) }, quit() {},
+      getPath: () => rec.userData },
     BrowserWindow,
     ipcMain: { handle: (ch, fn) => (rec.handlers[ch] = fn) },
     nativeImage: { createFromPath: (p) => ({ path: p }) },
     shell: { openPath: async (p) => (rec.opened.push(p), rec.openError || "") },
     clipboard: { writeText: (t) => rec.clipboard.push(t) },
-    dialog: { showOpenDialog: async (_w, o) => (rec.dialog = o, { canceled: false, filePaths: ["/picked/a.txt"] }) },
+    dialog: {
+      showOpenDialog: async (_w, o) => (rec.dialog = o, { canceled: false, filePaths: ["/picked/a.txt"] }),
+      showMessageBox: async (_w, o) => (rec.boxes.push(o), { response: rec.boxes.length === 1 ? rec.answer ?? 1 : 0 }),
+    },
   };
   const childProcess = {
     execFile: (cmd, args, cb) => {
@@ -81,7 +86,14 @@ function fakes() {
     dispose: () => monitor.calls.push(["dispose"]),
   };
   const statusModule = { createMonitor: (opts) => ((rec.monitorOpts = opts), monitor) };
-  return { electron, childProcess, statusModule, rec, monitor };
+  const skillsModule = {
+    entries: [],
+    missing: () => skillsModule.entries,
+    findSkills: () => [{ name: "session-status" }],
+    summary: (es) => es.map((e) => e.agent.name).join(", "),
+    install: (e) => (rec.installed.push(e.agent.id), { added: ["session-status"], errors: [] }),
+  };
+  return { electron, childProcess, statusModule, skillsModule, rec, monitor };
 }
 
 /**
@@ -89,9 +101,12 @@ function fakes() {
  * app.whenReady() run.
  * @returns {Promise<object>} The fakes.
  */
-async function loadMain() {
+async function loadMain(pre = {}) {
   const f = fakes();
-  loadWithMocks("main.js", { electron: f.electron, child_process: f.childProcess, "./shared/status": f.statusModule });
+  Object.assign(f.rec, { userData: fs.mkdtempSync(path.join(require("os").tmpdir(), "agent-status-userdata-")) }, pre);
+  if (pre.entries) f.skillsModule.entries = pre.entries;
+  loadWithMocks("main.js", { electron: f.electron, child_process: f.childProcess, "./shared/status": f.statusModule,
+    "./shared/agent-skills": f.skillsModule });
   await new Promise((r) => setTimeout(r, 0));
   return f;
 }
@@ -323,4 +338,31 @@ test("chat preload: chatApi maps each method to its IPC channel", async () => {
   api.onEvent((e) => (got = e));
   listeners["chat-event"]({}, { kind: "init" });
   assert.deepEqual(got, { kind: "init" });
+});
+
+const lacking = [{ agent: { id: "vibe", name: "Mistral Vibe" }, missing: [{ name: "session-status" }] }];
+
+test("startup offers to add the skills to agents that lack them; Add links them", async () => {
+  const { rec } = await loadMain({ entries: lacking, answer: 0 });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(rec.boxes[0].message, "Add the agent skills to your agents?");
+  assert.deepEqual(rec.boxes[0].buttons, ["Add", "Not now", "Don't ask again"]);
+  assert.match(rec.boxes[0].detail, /Missing in: Mistral Vibe/);
+  assert.deepEqual(rec.installed, ["vibe"]);
+  assert.match(rec.boxes[1].detail, /Mistral Vibe: session-status/);
+});
+
+test("startup offer: Not now does nothing; Don't ask again is remembered; nothing missing, no dialog", async () => {
+  const later = await loadMain({ entries: lacking, answer: 1 });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(later.rec.installed, []);
+  const never = await loadMain({ entries: lacking, answer: 2 });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.ok(fs.existsSync(path.join(never.rec.userData, "skills-offer-declined")));
+  const again = await loadMain({ entries: lacking, userData: never.rec.userData });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(again.rec.boxes.length, 0, "not asked again");
+  const none = await loadMain();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(none.rec.boxes.length, 0);
 });

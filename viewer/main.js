@@ -6,7 +6,9 @@
  * ../session-status/scripts/usage.py. Read-only towards the board.
  */
 
-const { app, BrowserWindow, clipboard, ipcMain, nativeImage, shell } = require("electron");
+const { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } = require("electron");
+const fs = require("fs");
+const agentSkills = require("./shared/agent-skills");
 const { execFile } = require("child_process");
 const path = require("path");
 const { createMonitor } = require("./shared/status");
@@ -53,6 +55,56 @@ function createWindow() {
 ipcMain.handle("open-path", (_event, p) =>
   monitor.isOpenablePath(p) ? shell.openPath(p) : "not a context or memory path of the current status");
 
+/** The skills this app offers to agents: the repository it runs from. */
+const SKILLS_ROOT = path.join(__dirname, "..");
+
+/**
+ * File remembering that the user chose "Don't ask again" for adding skills.
+ * @returns {string} Path in the app's data folder.
+ */
+function skillsDeclinedFile() {
+  return path.join(app.getPath("userData"), "skills-offer-declined");
+}
+
+/**
+ * Offer to add the skills to the installed agents that lack them
+ * (Add / Not now / Don't ask again), then add them and say what was done.
+ * @param {Electron.BrowserWindow|null} parent Window the dialogs belong to.
+ * @returns {Promise<object|null>} {added, errors} when skills were added, else null.
+ */
+async function offerSkills(parent) {
+  if (fs.existsSync(skillsDeclinedFile())) return null;
+  const entries = agentSkills.missing(SKILLS_ROOT);
+  if (!entries.length) return null;
+  const names = agentSkills.findSkills(SKILLS_ROOT).map((s) => s.name).join(", ");
+  const { response } = await dialog.showMessageBox(parent, {
+    type: "question",
+    buttons: ["Add", "Not now", "Don't ask again"],
+    defaultId: 0,
+    cancelId: 1,
+    message: "Add the agent skills to your agents?",
+    detail: `${names}\n\nMissing in: ${agentSkills.summary(entries)}.\nEach skill is linked into the agent's skills folder; nothing there is replaced.`,
+  });
+  if (response === 2) {
+    fs.mkdirSync(path.dirname(skillsDeclinedFile()), { recursive: true });
+    fs.writeFileSync(skillsDeclinedFile(), new Date().toISOString());
+  }
+  if (response !== 0) return null;
+  const added = [];
+  const errors = [];
+  for (const e of entries) {
+    const r = agentSkills.install(e);
+    if (r.added.length) added.push(`${e.agent.name}: ${r.added.join(", ")}`);
+    errors.push(...r.errors.map((x) => `${e.agent.name}: ${x}`));
+  }
+  await dialog.showMessageBox(parent, {
+    type: errors.length ? "warning" : "info",
+    message: errors.length ? "Some skills were not added." : "Skills added.",
+    detail: [...added, ...errors].join("\n") + "\n\nAgents pick them up in their next session.",
+  });
+  return { added, errors };
+}
+
 ipcMain.handle("copy-text", (_event, text) => {
   if (typeof text !== "string" || text.length > 10000) return false;
   clipboard.writeText(text);
@@ -98,6 +150,7 @@ app.whenReady().then(() => {
     onChange: send,
   });
   createWindow();
+  offerSkills(win);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

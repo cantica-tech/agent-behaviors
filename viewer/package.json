@@ -1,6 +1,6 @@
 {
   "name": "agent-status-viewer",
-  "version": "0.10.3",
+  "version": "0.12.0",
   "description": "Desktop viewer for the agent-behaviors session-status board (~/.agent-behaviors/status).",
   "main": "main.js",
   "private": true,

@@ -82,6 +82,10 @@
     openPath(p) {
       vscode.postMessage({ type: "openPath", path: p });
     },
+    /** Open VS Code's settings on this extension's page. */
+    openSettings() {
+      vscode.postMessage({ type: "openSettings" });
+    },
     /**
      * Ask the extension to re-run usage.py. The fresh snapshot arrives through
      * onStatus, so this resolves with the latest one already shown.

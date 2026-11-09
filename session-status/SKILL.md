@@ -203,12 +203,14 @@ line in `<model>.log`.
 
 ## Rules
 
-- **Write, never execute, in `~/.agent-behaviors`.** Every agent, present
-  and future, may write in `~/.agent-behaviors` (its status entry, the logs,
-  the reports, the heartbeats). No agent ever executes anything from there:
-  no script, binary or file stored under `~/.agent-behaviors` is run, sourced
-  or made executable. The scripts of this skill are run from the skill's own
-  directory, resolved to its real path outside `~/.agent-behaviors`.
+- **Write in `~/.agent-behaviors`; execute only from its `skills/`.** Every
+  agent, present and future, may write in `~/.agent-behaviors` (its status
+  entry, the logs, the reports, the heartbeats). The only things ever run
+  from there are the skills' own scripts under `~/.agent-behaviors/skills/`
+  (where the Agent Status extension deploys them), run with their
+  interpreter, e.g. `python3 ~/.agent-behaviors/skills/session-status/scripts/board.py`.
+  Nothing else stored under `~/.agent-behaviors` (status files, logs,
+  inboxes, settings) is ever run, sourced or made executable.
 - **Status updates are silent and need no authorization.** Publishing your
   entry and every other write to the status files is part of the session's
   routine: do it without telling the user and without asking for their

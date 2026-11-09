@@ -7,12 +7,12 @@ the same view as the [Electron viewer](../README.md).
 - **Agent Status: Open Agent Status** opens the panel: one card per session
   with state, project, task, blocker, items left, ETA, projected and measured
   tokens, items and notes.
-- The **Agent Status** icon in the activity bar opens the sidebar: a
-  **Summary** (one line per session: project, state, task or blocker;
-  click one to open the full view) and **Sessions**, the same view as the
-  panel, with Refresh and "open in editor" buttons in its title bar. The
-  icon's badge shows the number of reporting sessions from the moment VS
-  Code starts, and nothing when there are none.
+- The **Agent Status** icon in the activity bar opens the sidebar:
+  **Sessions**, the same view as the panel, with Refresh, "open in editor"
+  and Settings buttons in its title bar, and below it a **Summary** (one line
+  per session: project, state, task or blocker; click one to open the full
+  view). The icon's badge shows the number of reporting sessions from the
+  moment VS Code starts, and nothing when there are none.
 - Each card links to the session's context folder and memory; a location
   that is gone or unknown is described instead.
 - **Message…** on a card sends a prompt to that agent's inbox (any agent
@@ -35,7 +35,36 @@ in the view, or open the file itself with **Agent Status: Open Settings
 File** (also the gear button in the sidebar title bar). The extension only
 reads the board. Its `usage.py` deltas are kept in `.usage-vscode.json`.
 
+## Skills deployment
+
+At activation, the extension copies the agent skills it ships into
+`<AgentsMonitor>/skills/`: `README.md` (the viewer README), `LICENSE`,
+`coding/` and `session-status/`. The AgentsMonitor folder is the setting
+`agentStatus.agentsMonitorFolder` (default `~/.agent-behaviors`). It copies
+once per extension version, overwriting the files it ships and keeping any
+others. A `skills` folder that is a link (e.g. to a checkout of
+agent-behaviors) is left alone.
+
+## Adding the skills to your agents
+
+After deploying the skills, the extension offers to add them to every agent
+installed on this machine that lacks them: Claude Code (`~/.claude/skills`),
+GitHub Copilot (`~/.copilot/skills`), Codex (`~/.codex/skills`), Gemini CLI
+(`~/.gemini/skills`), Mistral Vibe (`~/.vibe/skills`) and the Agent Skills
+folder (`~/.agents/skills`). Each skill is linked from `<AgentsMonitor>/skills`
+into the agent's folder, so redeployments reach every agent; nothing already
+there is replaced. Answer **Add**, **Not now** or **Don't ask again**; the
+command **Agent Status: Add Skills to Agents** lets you pick the agents at
+any time.
+
 ## Settings
+
+**Settings** (the gear in the **Sessions** title bar, or the command
+**Agent Status: Settings**) opens VS Code's settings on this extension. The
+refresh settings there (`viewerBoardSeconds`, `viewerUsageSeconds`,
+`statusSessionSeconds`, `doneVisibleHours`) are saved to
+`~/.agent-behaviors/session-status.json`, which every viewer and agent
+reads, and apply at once.
 
 | Setting | Default | Meaning |
 | --- | --- | --- |
@@ -43,6 +72,7 @@ reads the board. Its `usage.py` deltas are kept in `.usage-vscode.json`.
 | `agentStatus.usageScript` | bundled copy | Path to `usage.py` |
 | `agentStatus.python` | `python3` | Python 3 interpreter |
 | `agentStatus.showStatusBar` | `true` | Show the status-bar summary |
+| `agentStatus.agentsMonitorFolder` | `~/.agent-behaviors` | Where the skills are deployed (`skills/`) |
 
 ## Build and install
 

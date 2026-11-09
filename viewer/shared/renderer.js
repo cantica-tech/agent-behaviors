@@ -381,7 +381,8 @@ const SETTING_FIELDS = [
  * not refreshed by later snapshots, so typing is never interrupted.
  */
 function setupSettingsPanel() {
-  if (!window.statusApi.saveSettings) return;
+  // VS Code has its own Settings (the gear in the Sessions view's title bar): no button here.
+  if (window.statusApi.openSettings || !window.statusApi.saveSettings) return;
   const button = el("button", null, "Settings");
   button.id = "settingsButton";
   document.getElementById("refresh").before(button);

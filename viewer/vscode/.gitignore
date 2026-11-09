@@ -1,3 +1,4 @@
+media/agent-skills.js
 media/status.js
 media/renderer.js
 media/styles.css
@@ -5,4 +6,6 @@ media/usage.py
 media/viewer.svg
 media/viewer-dark.svg
 media/icon.png
+skills/
+README.marketplace.md
 *.vsix

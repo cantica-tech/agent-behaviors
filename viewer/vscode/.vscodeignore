@@ -2,3 +2,4 @@ scripts/**
 *.vsix
 .gitignore
 install.sh
+README.md

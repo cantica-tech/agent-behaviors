@@ -330,3 +330,12 @@ test("settings panel: fill, save numbers, show errors", async () => {
   [...$(".settings-panel").querySelectorAll("button")].find((b) => b.textContent === "Close").click();
   assert.equal(panel.hidden, true);
 });
+
+test("no Settings button in the view when the host has its own settings (VS Code)", () => {
+  const api = fakeApi();
+  api.openSettings = () => api.calls.push(["openSettings"]);
+  const win = loadPage("index.html", ["shared/renderer.js"], { statusApi: api });
+  api.push(snap([]));
+  assert.equal(win.document.getElementById("settingsButton"), null, "the gear in the Sessions title bar is the way in");
+  assert.equal(win.document.querySelector(".settings-panel"), null, "no in-page form");
+});

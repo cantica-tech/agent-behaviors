@@ -7,7 +7,14 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const path = require("path");
+const fs = require("fs");
+const os = require("os");
 const { loadWithMocks, loadPage } = require("./helpers");
+
+/** A temporary AgentsMonitor folder per test file, so tests never touch ~/.agent-behaviors. */
+const MONITOR_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "agent-status-monitor-"));
+process.on("exit", () => fs.rmSync(MONITOR_ROOT, { recursive: true, force: true }));
+let monitorCount = 0;
 
 /**
  * A fake webview recording what the extension posts and set up.
@@ -33,8 +40,9 @@ function fakeWebview() {
 function fakes(settings = {}) {
   const rec = { commands: {}, executed: [], externals: [], terminals: [], panels: [], providers: {}, shown: [], infos: [], errors: [],
     clipboard: [], monitors: [], available: ["claude-vscode.editor.open", "workbench.action.chat.open", "mistral-vibe-code.open", "chatgpt.openSidebar"],
-    configListeners: [], trees: {} };
-  const conf = { showStatusBar: true, python: "python3", boardDirectory: "", usageScript: "", chatCommands: {
+    configListeners: [], trees: {}, warnings: [], statusMessages: [], saved: [] };
+  const conf = { showStatusBar: true, python: "python3", boardDirectory: "", usageScript: "",
+    agentsMonitorFolder: path.join(MONITOR_ROOT, `m${monitorCount++}`), chatCommands: {
     claude: { command: "claude-vscode.editor.open", withSession: true },
     copilot: { command: "workbench.action.chat.open" },
     mistral: { command: "mistral-vibe-code.open" },
@@ -80,7 +88,7 @@ function fakes(settings = {}) {
     ViewColumn: { Active: -1 },
     workspace: {
       workspaceFolders: [{ uri: file("/work/here") }],
-      getConfiguration: () => ({ get: (k) => conf[k] }),
+      getConfiguration: () => ({ get: (k) => conf[k], inspect: (k) => ({ globalValue: (rec.userSet || {})[k] }) }),
       onDidChangeConfiguration: (fn) => (rec.configListeners.push(fn), { dispose() {} }),
     },
     window: {
@@ -102,7 +110,10 @@ function fakes(settings = {}) {
         if (rec.showFails) throw new Error("nope");
         rec.shown.push(uri.fsPath);
       },
-      showInformationMessage: (m) => rec.infos.push(m),
+      showInformationMessage: (m, ...buttons) => (rec.infos.push(m), Promise.resolve(buttons.length ? rec.answer : undefined)),
+      showQuickPick: async (items) => ((rec.quickPick = items), rec.pick ? rec.pick(items) : undefined),
+      showWarningMessage: (m) => rec.warnings.push(m),
+      setStatusBarMessage: (m) => rec.statusMessages.push(m),
       showErrorMessage: (m) => rec.errors.push(m),
     },
     commands: {
@@ -121,7 +132,7 @@ function fakes(settings = {}) {
       const m = { opts, calls: [], agent: null, target: null, disposed: false,
         snapshot: () => ({ rows: rec.initialRows || [], settingsFile: "/cfg/s.json" }),
         refresh: () => m.calls.push("refresh"),
-        saveSettings: (v) => ({ ok: true, v }),
+        saveSettings: (v) => (rec.saved.push(v), rec.saveResult || { ok: true, v }),
         sendMessage: (s, t) => ({ ok: true, s, t }),
         sessionAgent: () => m.agent,
         sessionTarget: () => m.target,
@@ -131,7 +142,15 @@ function fakes(settings = {}) {
       return m;
     },
   };
-  return { vscode, statusModule, rec, conf };
+  const skillsModule = {
+    entries: [],
+    installed: [],
+    missing: () => skillsModule.entries,
+    findSkills: () => [{ name: "session-status" }, { name: "markdown" }],
+    summary: (es) => es.map((e) => e.agent.name).join(", "),
+    install: (e) => (skillsModule.installed.push(e.agent.id), { added: e.missing.map((s) => s.name), errors: [] }),
+  };
+  return { vscode, statusModule, skillsModule, rec, conf };
 }
 
 /**
@@ -139,11 +158,16 @@ function fakes(settings = {}) {
  * @param {object} [settings] agentStatus settings.
  * @returns {object} {ext, rec, conf, monitor, context}.
  */
-function activate(settings, initialRows) {
+function activate(settings, initialRows, extensionPath = "/ext", version = "1.0.0", pre = {}) {
   const f = fakes(settings);
+  Object.assign(f.rec, pre);
   f.rec.initialRows = initialRows;
-  const ext = loadWithMocks("vscode/extension.js", { vscode: f.vscode, "./media/status": f.statusModule });
-  const context = { extensionPath: "/ext", extensionUri: f.vscode.Uri.file("/ext"), subscriptions: [] };
+  if (f.rec.skillEntries) f.skillsModule.entries = f.rec.skillEntries;
+  const ext = loadWithMocks("vscode/extension.js", { vscode: f.vscode, "./media/status": f.statusModule, "./media/agent-skills": f.skillsModule });
+  const state = new Map(f.rec.globalState || []);
+  const context = { extensionPath, extensionUri: f.vscode.Uri.file(extensionPath), subscriptions: [],
+    extension: { packageJSON: { version } },
+    globalState: { get: (k) => state.get(k), update: async (k, v) => state.set(k, v) } };
   ext.activate(context);
   return { ext, ...f, context, monitor: () => f.rec.monitors.at(-1) };
 }
@@ -158,7 +182,7 @@ test("activate: monitor options, status bar, commands, sidebar provider", () => 
   assert.equal(m.opts.python, "python3");
   assert.equal(m.opts.board, undefined, "empty setting: default board");
   assert.equal(rec.status.command, "agentStatus.open");
-  assert.deepEqual(Object.keys(rec.commands).sort(), ["agentStatus.open", "agentStatus.openSettings", "agentStatus.refresh"]);
+  assert.deepEqual(Object.keys(rec.commands).sort(), ["agentStatus.addSkills", "agentStatus.open", "agentStatus.openSettings", "agentStatus.refresh"]);
   assert.equal(rec.providers["agentStatus.sidebar"].opts.webviewOptions.retainContextWhenHidden, true);
 });
 
@@ -376,16 +400,90 @@ test("openSession: chatCommands can add agents (e.g. Grok)", async () => {
   assert.deepEqual(a.rec.executed.at(-1), ["grok.chat.open"]);
 });
 
-test("Open Settings File: opens the settings file, reports failures", async () => {
+test("Settings opens VS Code's settings on the extension's page (command and webview button)", async () => {
   const a = activate();
   await a.rec.commands["agentStatus.openSettings"]();
-  assert.deepEqual(a.rec.shown, ["/cfg/s.json"], "the snapshot's file, available from activation");
-  a.monitor().opts.onChange({ rows: [] });
-  await a.rec.commands["agentStatus.openSettings"]();
-  assert.equal(a.rec.shown.at(-1), "/home/.agent-behaviors/session-status.json", "default when the snapshot has none");
-  a.rec.showFails = true;
-  await a.rec.commands["agentStatus.openSettings"]();
-  assert.match(a.rec.errors.at(-1), /cannot open \/home\/.agent-behaviors\/session-status.json: nope/);
+  assert.deepEqual(a.rec.executed.at(-1), ["workbench.action.openSettings", "@ext:canticatech.cantica-agent-status"]);
+  const wv = panelWebview(a);
+  a.rec.executed.length = 0;
+  wv.receive({ type: "openSettings" });
+  await tick();
+  assert.deepEqual(a.rec.executed, [["workbench.action.openSettings", "@ext:canticatech.cantica-agent-status"]]);
+  assert.equal(a.rec.shown.length, 0, "the JSON file is not opened");
+});
+
+test("refresh settings changed in VS Code are saved to session-status.json, without restarting", () => {
+  const a = activate();
+  a.rec.userSet = { viewerBoardSeconds: 9, doneVisibleHours: 24 };
+  a.rec.configListeners[0]({ affectsConfiguration: (s) => s === "agentStatus" || s === "agentStatus.viewerBoardSeconds" });
+  assert.deepEqual(a.rec.saved, [{ viewerBoardSeconds: 9, doneVisibleHours: 24 }]);
+  assert.equal(a.rec.monitors.length, 1, "monitor not restarted");
+  a.rec.saveResult = { ok: false, error: "out of range" };
+  a.rec.configListeners[0]({ affectsConfiguration: (s) => s === "agentStatus" || s === "agentStatus.viewerBoardSeconds" });
+  assert.match(a.rec.warnings.concat(a.rec.errors).at(-1), /settings not saved: out of range/);
+  a.rec.userSet = {};
+  const before = a.rec.saved.length;
+  a.ext._test.saveFileSettings();
+  assert.equal(a.rec.saved.length, before, "nothing written when nothing is set by the user");
+});
+
+/**
+ * An extension folder with bundled skills, for the deployment tests.
+ * @returns {string} Its path.
+ */
+function bundledExtension() {
+  const ext = fs.mkdtempSync(path.join(MONITOR_ROOT, "ext-"));
+  fs.mkdirSync(path.join(ext, "skills", "session-status", "scripts"), { recursive: true });
+  fs.writeFileSync(path.join(ext, "skills", "README.md"), "readme v1");
+  fs.writeFileSync(path.join(ext, "skills", "LICENSE"), "Apache");
+  fs.writeFileSync(path.join(ext, "skills", "session-status", "scripts", "board.py"), "print(1)");
+  return ext;
+}
+
+test("skills are deployed into <AgentsMonitor>/skills at activation, once per version", () => {
+  const ext = bundledExtension();
+  const a = activate({}, [], ext, "1.0.0");
+  const target = path.join(a.conf.agentsMonitorFolder, "skills");
+  assert.equal(fs.readFileSync(path.join(target, "README.md"), "utf8"), "readme v1");
+  assert.ok(fs.existsSync(path.join(target, "LICENSE")));
+  assert.ok(fs.existsSync(path.join(target, "session-status", "scripts", "board.py")));
+  assert.equal(fs.readFileSync(path.join(target, ".cantica-agent-status-version"), "utf8").trim(), "1.0.0");
+  assert.match(a.rec.statusMessages.at(-1), /skills deployed to/);
+  fs.writeFileSync(path.join(target, "README.md"), "edited by the user");
+  fs.writeFileSync(path.join(target, "mine.txt"), "keep");
+  const same = a.ext._test.deploySkills(a.context);
+  assert.equal(same.status, "current", "same version: not copied again");
+  assert.equal(fs.readFileSync(path.join(target, "README.md"), "utf8"), "edited by the user");
+  const upgraded = a.ext._test.deploySkills({ ...a.context, extension: { packageJSON: { version: "1.0.1" } } });
+  assert.equal(upgraded.status, "deployed");
+  assert.equal(fs.readFileSync(path.join(target, "README.md"), "utf8"), "readme v1", "new version overwrites shipped files");
+  assert.equal(fs.readFileSync(path.join(target, "mine.txt"), "utf8"), "keep", "other files kept");
+});
+
+test("a skills folder that is a link is never written to", () => {
+  const ext = bundledExtension();
+  const folder = path.join(MONITOR_ROOT, `linked${monitorCount++}`);
+  const checkout = path.join(MONITOR_ROOT, `checkout${monitorCount++}`);
+  fs.mkdirSync(folder, { recursive: true });
+  fs.mkdirSync(checkout, { recursive: true });
+  fs.writeFileSync(path.join(checkout, "README.md"), "the repository's own README");
+  fs.symlinkSync(checkout, path.join(folder, "skills"));
+  const a = activate({ agentsMonitorFolder: folder }, [], ext);
+  assert.equal(a.ext._test.deploySkills(a.context).status, "linked");
+  assert.equal(fs.readFileSync(path.join(checkout, "README.md"), "utf8"), "the repository's own README");
+  assert.equal(a.rec.warnings.length, 0);
+});
+
+test("AgentsMonitor folder: ~ expanded, change redeploys; missing bundle is reported", () => {
+  const a = activate({ agentsMonitorFolder: "~/somewhere" });
+  assert.equal(a.ext._test.agentsMonitorFolder(), path.join(os.homedir(), "somewhere"));
+  assert.match(a.rec.warnings.at(-1), /skills not deployed .*no skills bundled/);
+  const ext = bundledExtension();
+  const b = activate({}, [], ext, "2.0.0");
+  b.conf.agentsMonitorFolder = path.join(MONITOR_ROOT, `moved${monitorCount++}`);
+  b.rec.configListeners[0]({ affectsConfiguration: (s) => s === "agentStatus" || s === "agentStatus.agentsMonitorFolder" });
+  assert.ok(fs.existsSync(path.join(b.conf.agentsMonitorFolder, "skills", "LICENSE")));
+  assert.equal(b.rec.monitors.length, 2, "monitor restarted for non-file settings");
 });
 
 test("refresh command, configuration change restarts the monitor, dispose stops it", () => {
@@ -456,4 +554,50 @@ test("bridge: openPath posts; refresh resolves with the next snapshot", async ()
   assert.deepEqual(posted.at(-1), { type: "refresh" });
   send({ type: "status", snapshot: { n: 2 } });
   assert.equal((await p).n, 2);
+});
+
+/** Plan entries for agents lacking skills, as agent-skills.missing() returns them. */
+const lacking = [
+  { agent: { id: "vibe", name: "Mistral Vibe" }, missing: [{ name: "session-status" }, { name: "markdown" }] },
+  { agent: { id: "codex", name: "Codex" }, missing: [{ name: "markdown" }] },
+];
+
+test("skills offer: asked after deployment; Add links them into every agent that lacks them", async () => {
+  const a = activate({}, [], bundledExtension(), "1.0.0", { skillEntries: lacking, answer: "Add" });
+  await tick();
+  await tick();
+  const offer = a.rec.infos.find((m) => /add the agent skills/.test(m));
+  assert.match(offer, /\(session-status, markdown\) to Mistral Vibe, Codex\?/);
+  assert.deepEqual(a.skillsModule.installed, ["vibe", "codex"]);
+  assert.match(a.rec.infos.at(-1), /skills added \(Mistral Vibe: session-status, markdown; Codex: markdown\)/);
+});
+
+test("skills offer: Not now does nothing; Don't ask again is remembered", async () => {
+  const later = activate({}, [], bundledExtension(), "1.0.0", { skillEntries: lacking, answer: "Not now" });
+  await tick();
+  assert.deepEqual(later.skillsModule.installed, []);
+  const never = activate({}, [], bundledExtension(), "1.0.0", { skillEntries: lacking, answer: "Don't ask again" });
+  await tick();
+  assert.equal(never.context.globalState.get("agentStatus.skillsOfferDeclined"), true);
+  const again = activate({}, [], bundledExtension(), "1.0.0", { skillEntries: lacking, globalState: [["agentStatus.skillsOfferDeclined", true]] });
+  await tick();
+  assert.equal(again.rec.infos.filter((m) => /add the agent skills/.test(m)).length, 0, "not asked again");
+});
+
+test("skills offer: nothing asked when every agent has the skills", async () => {
+  const a = activate();
+  await tick();
+  assert.equal(a.rec.infos.filter((m) => /add the agent skills/.test(m)).length, 0);
+});
+
+test("Add Skills to Agents command: pick the agents, even after Don't ask again", async () => {
+  const a = activate({}, [], "/ext", "1.0.0", { skillEntries: lacking, globalState: [["agentStatus.skillsOfferDeclined", true]] });
+  a.rec.pick = (items) => items.filter((i) => i.label === "Codex");
+  await a.rec.commands["agentStatus.addSkills"]();
+  assert.deepEqual(a.rec.quickPick.map((i) => [i.label, i.description, i.picked]),
+    [["Mistral Vibe", "session-status, markdown", true], ["Codex", "markdown", true]]);
+  assert.deepEqual(a.skillsModule.installed, ["codex"]);
+  a.skillsModule.entries = [];
+  await a.rec.commands["agentStatus.addSkills"]();
+  assert.match(a.rec.infos.at(-1), /every detected agent already has the skills/);
 });

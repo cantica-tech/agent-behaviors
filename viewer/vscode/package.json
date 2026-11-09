@@ -2,7 +2,7 @@
   "name": "cantica-agent-status",
   "displayName": "Cantica Agent Status",
   "description": "Live status of the agent sessions on this machine, from the agent-behaviors session-status board.",
-  "version": "0.10.3",
+  "version": "0.12.0",
   "publisher": "canticatech",
   "icon": "media/icon.png",
   "license": "Apache-2.0",
@@ -37,9 +37,14 @@
       },
       {
         "command": "agentStatus.openSettings",
-        "title": "Open Settings File",
+        "title": "Settings",
         "category": "Agent Status",
         "icon": "$(settings-gear)"
+      },
+      {
+        "command": "agentStatus.addSkills",
+        "title": "Add Skills to Agents",
+        "category": "Agent Status"
       }
     ],
     "configuration": {
@@ -100,6 +105,39 @@
               "command"
             ]
           }
+        },
+        "agentStatus.agentsMonitorFolder": {
+          "type": "string",
+          "default": "~/.agent-behaviors",
+          "markdownDescription": "The AgentsMonitor folder. At activation the extension deploys the agent skills it ships (README, LICENSE, `coding/`, `session-status/`) into its `skills/` subfolder, once per extension version. A `skills` folder that is a link (e.g. to a checkout of agent-behaviors) is left alone."
+        },
+        "agentStatus.viewerBoardSeconds": {
+          "type": "number",
+          "default": 5,
+          "minimum": 1,
+          "maximum": 300,
+          "markdownDescription": "How often the views re-read the board, in seconds, on top of reacting to file changes. Saved to `~/.agent-behaviors/session-status.json`, which every viewer and agent reads; applies at once."
+        },
+        "agentStatus.viewerUsageSeconds": {
+          "type": "number",
+          "default": 30,
+          "minimum": 10,
+          "maximum": 3600,
+          "markdownDescription": "How often token usage is re-measured with usage.py, in seconds. Saved to `~/.agent-behaviors/session-status.json`, which every viewer and agent reads; applies at once."
+        },
+        "agentStatus.statusSessionSeconds": {
+          "type": "number",
+          "default": 300,
+          "minimum": 60,
+          "maximum": 3600,
+          "markdownDescription": "Cycle of the <model>.status background session, in seconds. Saved to `~/.agent-behaviors/session-status.json`, which every viewer and agent reads; applies at once."
+        },
+        "agentStatus.doneVisibleHours": {
+          "type": "number",
+          "default": 12,
+          "minimum": 0,
+          "maximum": 720,
+          "markdownDescription": "How long a done session stays in the views and reports, in hours. Saved to `~/.agent-behaviors/session-status.json`, which every viewer and agent reads; applies at once."
         }
       }
     },
@@ -115,14 +153,14 @@
     "views": {
       "agentStatus": [
         {
-          "id": "agentStatus.summary",
-          "name": "Summary",
-          "icon": "media/viewer.svg"
-        },
-        {
           "type": "webview",
           "id": "agentStatus.sidebar",
           "name": "Sessions",
+          "icon": "media/viewer.svg"
+        },
+        {
+          "id": "agentStatus.summary",
+          "name": "Summary",
           "icon": "media/viewer.svg"
         }
       ]
@@ -150,8 +188,8 @@
   "scripts": {
     "sync": "node scripts/sync.js",
     "vscode:prepublish": "node scripts/sync.js",
-    "package": "npx --yes @vscode/vsce@3.2.1 package --no-dependencies --allow-missing-repository",
+    "package": "npx --yes @vscode/vsce@3.2.1 package --no-dependencies --allow-missing-repository --readme-path README.marketplace.md --baseContentUrl https://github.com/cantica-tech/agent-behaviors/blob/main/viewer --baseImagesUrl https://github.com/cantica-tech/agent-behaviors/raw/main/viewer",
     "test": "cd .. && node --test test/",
-    "publish": "npx --yes @vscode/vsce@3.2.1 publish --no-dependencies --allow-missing-repository"
+    "publish": "npx --yes @vscode/vsce@3.2.1 publish --no-dependencies --allow-missing-repository --readme-path README.marketplace.md --baseContentUrl https://github.com/cantica-tech/agent-behaviors/blob/main/viewer --baseImagesUrl https://github.com/cantica-tech/agent-behaviors/raw/main/viewer"
   }
 }

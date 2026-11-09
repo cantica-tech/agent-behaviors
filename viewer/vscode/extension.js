@@ -10,8 +10,11 @@
 
 const vscode = require("vscode");
 const crypto = require("crypto");
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { createMonitor, DEFAULT_SETTINGS_FILE } = require("./media/status");
+const agentSkills = require("./media/agent-skills");
 
 /** The open webview panel, or null. */
 let panel = null;
@@ -27,6 +30,125 @@ let monitor = null;
 let statusItem = null;
 /** Latest snapshot, to show immediately when the panel opens. */
 let latest = null;
+
+/** The extension's id, for its page in the VS Code settings. */
+const EXTENSION_ID = "canticatech.cantica-agent-status";
+/** Settings kept in session-status.json; edited in VS Code settings, written to the file. */
+const FILE_SETTINGS = ["viewerBoardSeconds", "viewerUsageSeconds", "statusSessionSeconds", "doneVisibleHours"];
+/** globalState key: the user chose "Don't ask again" for adding skills to agents. */
+const SKILLS_OFFER_DECLINED = "agentStatus.skillsOfferDeclined";
+
+/**
+ * Add the deployed skills to agents that lack them: ask first (offer), or
+ * let the user pick the agents (command).
+ * @param {vscode.ExtensionContext} context Extension context.
+ * @param {{ask: boolean}} opts ask: true for the offer after deployment
+ *   (Add / Not now / Don't ask again); false for the command (pick agents).
+ * @returns {Promise<{added: string[], errors: string[]}|null>} What was done, or null when nothing was.
+ */
+async function addSkillsToAgents(context, opts) {
+  const root = path.join(agentsMonitorFolder(), "skills");
+  const entries = agentSkills.missing(root);
+  if (!entries.length) {
+    if (!opts.ask) vscode.window.showInformationMessage("Agent Status: every detected agent already has the skills.");
+    return null;
+  }
+  let chosen = entries;
+  if (opts.ask) {
+    if (context.globalState && context.globalState.get(SKILLS_OFFER_DECLINED)) return null;
+    const names = agentSkills.findSkills(root).map((s) => s.name).join(", ");
+    const pick = await vscode.window.showInformationMessage(
+      `Agent Status: add the agent skills (${names}) to ${agentSkills.summary(entries)}?`, "Add", "Not now", "Don't ask again");
+    if (pick === "Don't ask again" && context.globalState) await context.globalState.update(SKILLS_OFFER_DECLINED, true);
+    if (pick !== "Add") return null;
+  } else {
+    const items = entries.map((e) => ({ label: e.agent.name, description: e.missing.map((s) => s.name).join(", "), picked: true, entry: e }));
+    const picked = await vscode.window.showQuickPick(items, { canPickMany: true, title: "Add the agent skills to…" });
+    if (!picked || !picked.length) return null;
+    chosen = picked.map((p) => p.entry);
+  }
+  const added = [];
+  const errors = [];
+  for (const e of chosen) {
+    const r = agentSkills.install(e);
+    if (r.added.length) added.push(`${e.agent.name}: ${r.added.join(", ")}`);
+    errors.push(...r.errors.map((x) => `${e.agent.name}: ${x}`));
+  }
+  if (added.length) vscode.window.showInformationMessage(`Agent Status: skills added (${added.join("; ")}). Agents pick them up in their next session.`);
+  if (errors.length) vscode.window.showWarningMessage(`Agent Status: some skills were not added: ${errors.join("; ")}`);
+  return { added, errors };
+}
+
+/** Marker file in <AgentsMonitor>/skills holding the version that deployed it. */
+const DEPLOY_MARKER = ".cantica-agent-status-version";
+
+/**
+ * The AgentsMonitor folder: agentStatus.agentsMonitorFolder, "~" expanded.
+ * @returns {string} Absolute path (default ~/.agent-behaviors).
+ */
+function agentsMonitorFolder() {
+  const raw = (config().get("agentsMonitorFolder") || "~/.agent-behaviors").trim();
+  return path.resolve(raw === "~" ? os.homedir() : raw.replace(/^~(?=[\\/])/, os.homedir()));
+}
+
+/**
+ * Deploy the skills bundled with the extension (skills/: viewer README,
+ * LICENSE, coding/, session-status/) into <AgentsMonitor>/skills/.
+ *
+ * Runs at activation and when the folder setting changes; copies only when
+ * this version of the extension has not deployed there yet (a marker file),
+ * overwriting the files it ships and leaving any others. A skills folder that
+ * is a link (e.g. to a checkout of agent-behaviors) is left alone, so a
+ * developer's repository is never overwritten.
+ * @param {vscode.ExtensionContext} context Extension context.
+ * @returns {{status: "deployed"|"current"|"linked"|"error", target: string, error?: string}} The outcome.
+ */
+function deploySkills(context) {
+  const target = path.join(agentsMonitorFolder(), "skills");
+  const source = path.join(context.extensionPath, "skills");
+  const version = (context.extension && context.extension.packageJSON && context.extension.packageJSON.version) || "dev";
+  try {
+    if (!fs.existsSync(source)) return { status: "error", target, error: "no skills bundled with the extension" };
+    let link = false;
+    try {
+      link = fs.lstatSync(target).isSymbolicLink();
+    } catch {
+      /* not there yet */
+    }
+    if (link) return { status: "linked", target };
+    const marker = path.join(target, DEPLOY_MARKER);
+    if (fs.existsSync(marker) && fs.readFileSync(marker, "utf8").trim() === version) return { status: "current", target };
+    fs.mkdirSync(target, { recursive: true });
+    fs.cpSync(source, target, { recursive: true, force: true });
+    fs.writeFileSync(marker, `${version}\n`);
+    return { status: "deployed", target };
+  } catch (err) {
+    return { status: "error", target, error: err.message };
+  }
+}
+
+/**
+ * Write the refresh settings changed in VS Code settings to session-status.json.
+ * Only values the user set (globally or for the workspace) are written.
+ */
+function saveFileSettings() {
+  if (!monitor) return;
+  const cfg = config();
+  const values = {};
+  for (const key of FILE_SETTINGS) {
+    const info = cfg.inspect(key) || {};
+    const v = info.workspaceValue ?? info.globalValue;
+    if (v !== undefined) values[key] = v;
+  }
+  if (!Object.keys(values).length) return;
+  const result = monitor.saveSettings(values);
+  if (!result.ok) vscode.window.showErrorMessage(`Agent Status: settings not saved: ${result.error}`);
+}
+
+/** Open VS Code's settings on this extension's page. */
+function openSettings() {
+  return vscode.commands.executeCommand("workbench.action.openSettings", `@ext:${EXTENSION_ID}`);
+}
 
 /**
  * Read this extension's settings.
@@ -153,6 +275,10 @@ function attachWebview(webview, context) {
     if (msg.type === "openPath" && monitor && monitor.isOpenablePath(msg.path)) {
       // Folders open in Finder / the file manager, files in their default app.
       vscode.env.openExternal(vscode.Uri.file(msg.path));
+    }
+    if (msg.type === "openSettings") {
+      openSettings();
+      return;
     }
     if (msg.type === "saveSettings") {
       const result = monitor ? monitor.saveSettings(msg.values) : { ok: false, error: "not running" };
@@ -356,23 +482,38 @@ function activate(context) {
     summaryView,
     vscode.commands.registerCommand("agentStatus.open", () => openPanel(context)),
     vscode.commands.registerCommand("agentStatus.refresh", () => monitor && monitor.refresh()),
-    vscode.commands.registerCommand("agentStatus.openSettings", async () => {
-      const file = (latest && latest.settingsFile) || DEFAULT_SETTINGS_FILE;
-      try {
-        await vscode.window.showTextDocument(vscode.Uri.file(file));
-      } catch (err) {
-        vscode.window.showErrorMessage(`Agent Status: cannot open ${file}: ${err.message}`);
-      }
-    }),
+    vscode.commands.registerCommand("agentStatus.openSettings", openSettings),
+    vscode.commands.registerCommand("agentStatus.addSkills", () => addSkillsToAgents(context, { ask: false })),
     vscode.window.registerWebviewViewProvider("agentStatus.sidebar", new SidebarProvider(context), {
       webviewOptions: { retainContextWhenHidden: true },
     }),
     vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("agentStatus")) startMonitor(context);
+      if (!e.affectsConfiguration("agentStatus")) return;
+      const fileOnly = FILE_SETTINGS.some((k) => e.affectsConfiguration(`agentStatus.${k}`)) &&
+        !["boardDirectory", "usageScript", "python", "agentsMonitorFolder", "showStatusBar", "chatCommands"]
+          .some((k) => e.affectsConfiguration(`agentStatus.${k}`));
+      if (fileOnly) {
+        saveFileSettings();
+        return;
+      }
+      if (e.affectsConfiguration("agentStatus.agentsMonitorFolder")) reportDeploy(deploySkills(context));
+      startMonitor(context);
     }),
     { dispose: () => monitor && monitor.dispose() },
   );
   startMonitor(context);
+  const deployed = deploySkills(context);
+  reportDeploy(deployed);
+  if (deployed.status !== "error") addSkillsToAgents(context, { ask: true });
+}
+
+/**
+ * Tell the user about a skills deployment that did something or failed.
+ * @param {{status: string, target: string, error?: string}} r Outcome of deploySkills.
+ */
+function reportDeploy(r) {
+  if (r.status === "deployed") vscode.window.setStatusBarMessage(`Agent Status: skills deployed to ${r.target}`, 8000);
+  if (r.status === "error") vscode.window.showWarningMessage(`Agent Status: skills not deployed to ${r.target}: ${r.error}`);
 }
 
 /** Deactivate: everything is disposed through context.subscriptions. */
@@ -390,6 +531,10 @@ module.exports = {
     html,
     SidebarProvider,
     SummaryProvider,
+    deploySkills,
+    addSkillsToAgents,
+    agentsMonitorFolder,
+    saveFileSettings,
     get summaryView() {
       return summaryView;
     },
