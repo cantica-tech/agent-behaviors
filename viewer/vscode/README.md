@@ -37,12 +37,19 @@ reads the board. Its `usage.py` deltas are kept in `.usage-vscode.json`.
 
 ## Skills deployment
 
-At activation, the extension copies the agent skills it ships into
-`<AgentsMonitor>/skills/`: `README.md` (the viewer README), `LICENSE`,
-`coding/` and `session-status/`. The AgentsMonitor folder is the setting
-`agentStatus.agentsMonitorFolder` (default `~/.agent-behaviors`). It copies
-once per extension version, overwriting the files it ships and keeping any
-others. A `skills` folder that is a link (e.g. to a checkout of
+At activation, the extension deploys into the AgentsMonitor folder
+(`agentStatus.agentsMonitorFolder`, default `~/.agent-behaviors`):
+
+- `skills/`: the `coding/` and `session-status/` skills and `LICENSE`, with a
+  generated `skills/README.md` that lists each skill (name, description and
+  the path of its `SKILL.md`). That README is only there for agents to
+  register the skills: the Claude Code start-up hook prints it to every
+  session, and other agents read it the same way.
+- `README.md`: a technical README explaining how the viewers and the skills
+  work together (folder layout, skills, viewers, data flow, rules).
+
+It deploys once per extension version, overwriting the files it ships and
+keeping any others. A `skills` folder that is a link (e.g. to a checkout of
 agent-behaviors) is left alone.
 
 ## Adding the skills to your agents

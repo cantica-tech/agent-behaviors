@@ -15,6 +15,7 @@ const os = require("os");
 const path = require("path");
 const { createMonitor, DEFAULT_SETTINGS_FILE } = require("./media/status");
 const agentSkills = require("./media/agent-skills");
+const deployer = require("./media/deploy");
 
 /** The open webview panel, or null. */
 let panel = null;
@@ -79,8 +80,6 @@ async function addSkillsToAgents(context, opts) {
   return { added, errors };
 }
 
-/** Marker file in <AgentsMonitor>/skills holding the version that deployed it. */
-const DEPLOY_MARKER = ".cantica-agent-status-version";
 
 /**
  * The AgentsMonitor folder: agentStatus.agentsMonitorFolder, "~" expanded.
@@ -92,39 +91,27 @@ function agentsMonitorFolder() {
 }
 
 /**
- * Deploy the skills bundled with the extension (skills/: viewer README,
- * LICENSE, coding/, session-status/) into <AgentsMonitor>/skills/.
- *
- * Runs at activation and when the folder setting changes; copies only when
- * this version of the extension has not deployed there yet (a marker file),
- * overwriting the files it ships and leaving any others. A skills folder that
- * is a link (e.g. to a checkout of agent-behaviors) is left alone, so a
- * developer's repository is never overwritten.
+ * Deploy the skills bundled with the extension into the AgentsMonitor folder
+ * (shared/deploy.js): skills/ with the coding/ and session-status/ skills,
+ * LICENSE and a generated skills README (the registry agents read), plus the
+ * technical README at the folder's root. Once per extension version; a skills
+ * folder that is a link is never written to.
  * @param {vscode.ExtensionContext} context Extension context.
  * @returns {{status: "deployed"|"current"|"linked"|"error", target: string, error?: string}} The outcome.
  */
 function deploySkills(context) {
-  const target = path.join(agentsMonitorFolder(), "skills");
-  const source = path.join(context.extensionPath, "skills");
+  const bundle = path.join(context.extensionPath, "skills");
   const version = (context.extension && context.extension.packageJSON && context.extension.packageJSON.version) || "dev";
-  try {
-    if (!fs.existsSync(source)) return { status: "error", target, error: "no skills bundled with the extension" };
-    let link = false;
-    try {
-      link = fs.lstatSync(target).isSymbolicLink();
-    } catch {
-      /* not there yet */
-    }
-    if (link) return { status: "linked", target };
-    const marker = path.join(target, DEPLOY_MARKER);
-    if (fs.existsSync(marker) && fs.readFileSync(marker, "utf8").trim() === version) return { status: "current", target };
-    fs.mkdirSync(target, { recursive: true });
-    fs.cpSync(source, target, { recursive: true, force: true });
-    fs.writeFileSync(marker, `${version}\n`);
-    return { status: "deployed", target };
-  } catch (err) {
-    return { status: "error", target, error: err.message };
+  if (!fs.existsSync(bundle)) {
+    return { status: "error", target: path.join(agentsMonitorFolder(), "skills"), error: "no skills bundled with the extension" };
   }
+  return deployer.deploy({
+    folder: agentsMonitorFolder(),
+    version,
+    skills: ["coding", "session-status"].map((name) => ({ name, from: path.join(bundle, name) })),
+    license: path.join(bundle, "LICENSE"),
+    architecture: path.join(context.extensionPath, "architecture.md"),
+  });
 }
 
 /**

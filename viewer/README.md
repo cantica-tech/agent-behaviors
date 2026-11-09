@@ -43,11 +43,15 @@ soon as they are saved.
 The viewer only reads: it never writes a session entry. Its own `usage.py`
 deltas are kept in `.usage-viewer.json`, apart from everyone else's.
 
-At start, the app offers to add this repository's skills to every agent
-installed on this machine that lacks them (Claude Code, GitHub Copilot,
-Codex, Gemini CLI, Mistral Vibe, `~/.agents`): each skill is linked into the
-agent's skills folder, and nothing already there is replaced. **Don't ask
-again** is remembered.
+At start, the app deploys this repository's skills into the AgentsMonitor
+folder (`AGENTS_MONITOR_FOLDER`, default `~/.agent-behaviors`), as the VS Code
+extension does: `skills/` with a generated `skills/README.md` that agents read
+to register the skills, and a technical `README.md` at the folder's root
+([docs/architecture.md](../docs/architecture.md)). It then offers to add the
+skills to every agent installed on this machine that lacks them (Claude
+Code, GitHub Copilot, Codex, Gemini CLI, Mistral Vibe, `~/.agents`): each
+skill is linked into the agent's skills folder, and nothing already there is
+replaced. **Don't ask again** is remembered.
 
 The same view is available inside VS Code: see [vscode/](vscode/README.md).
 Both share the status monitor, renderer and styles in [shared/](shared).

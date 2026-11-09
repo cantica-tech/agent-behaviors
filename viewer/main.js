@@ -8,7 +8,9 @@
 
 const { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } = require("electron");
 const fs = require("fs");
+const os = require("os");
 const agentSkills = require("./shared/agent-skills");
+const deployer = require("./shared/deploy");
 const { execFile } = require("child_process");
 const path = require("path");
 const { createMonitor } = require("./shared/status");
@@ -55,8 +57,33 @@ function createWindow() {
 ipcMain.handle("open-path", (_event, p) =>
   monitor.isOpenablePath(p) ? shell.openPath(p) : "not a context or memory path of the current status");
 
-/** The skills this app offers to agents: the repository it runs from. */
-const SKILLS_ROOT = path.join(__dirname, "..");
+/** The repository the app runs from: source of the skills it deploys. */
+const REPO = path.join(__dirname, "..");
+/** The AgentsMonitor folder: AGENTS_MONITOR_FOLDER, else ~/.agent-behaviors. */
+const AGENTS_MONITOR = process.env.AGENTS_MONITOR_FOLDER || path.join(os.homedir(), ".agent-behaviors");
+/** The skills offered to agents: the deployed copy once deployed, else the repository. */
+let SKILLS_ROOT = REPO;
+
+/**
+ * Deploy the repository's skills into the AgentsMonitor folder
+ * (shared/deploy.js): skills/ with coding/, session-status/, LICENSE and the
+ * generated skills README agents read, plus the technical README at the
+ * folder's root. Once per app version; a skills folder that is a link is
+ * left alone.
+ * @returns {object} Outcome of deploy().
+ */
+function deploySkills() {
+  const result = deployer.deploy({
+    folder: AGENTS_MONITOR,
+    version: require("./package.json").version,
+    skills: ["coding", "session-status"].map((name) => ({ name, from: path.join(REPO, name) })),
+    license: path.join(REPO, "LICENSE"),
+    architecture: path.join(REPO, "docs", "architecture.md"),
+  });
+  if (result.status === "deployed" || result.status === "current") SKILLS_ROOT = result.target;
+  if (result.status === "error") console.error(`skills not deployed to ${result.target}: ${result.error}`);
+  return result;
+}
 
 /**
  * File remembering that the user chose "Don't ask again" for adding skills.
@@ -150,6 +177,7 @@ app.whenReady().then(() => {
     onChange: send,
   });
   createWindow();
+  deploySkills();
   offerSkills(win);
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

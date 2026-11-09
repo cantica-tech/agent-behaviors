@@ -93,7 +93,10 @@ function fakes() {
     summary: (es) => es.map((e) => e.agent.name).join(", "),
     install: (e) => (rec.installed.push(e.agent.id), { added: ["session-status"], errors: [] }),
   };
-  return { electron, childProcess, statusModule, skillsModule, rec, monitor };
+  const deployModule = {
+    deploy: (opts) => ((rec.deployed = opts), rec.deployResult || { status: "current", target: "/monitor/skills" }),
+  };
+  return { electron, childProcess, statusModule, skillsModule, deployModule, rec, monitor };
 }
 
 /**
@@ -106,7 +109,7 @@ async function loadMain(pre = {}) {
   Object.assign(f.rec, { userData: fs.mkdtempSync(path.join(require("os").tmpdir(), "agent-status-userdata-")) }, pre);
   if (pre.entries) f.skillsModule.entries = pre.entries;
   loadWithMocks("main.js", { electron: f.electron, child_process: f.childProcess, "./shared/status": f.statusModule,
-    "./shared/agent-skills": f.skillsModule });
+    "./shared/agent-skills": f.skillsModule, "./shared/deploy": f.deployModule });
   await new Promise((r) => setTimeout(r, 0));
   return f;
 }
@@ -365,4 +368,14 @@ test("startup offer: Not now does nothing; Don't ask again is remembered; nothin
   const none = await loadMain();
   await new Promise((r) => setTimeout(r, 0));
   assert.equal(none.rec.boxes.length, 0);
+});
+
+test("startup deploys the repository's skills and READMEs into the AgentsMonitor folder", async () => {
+  const { rec } = await loadMain();
+  const o = rec.deployed;
+  assert.equal(o.folder, process.env.AGENTS_MONITOR_FOLDER || path.join(require("os").homedir(), ".agent-behaviors"));
+  assert.equal(o.version, require("../package.json").version);
+  assert.deepEqual(o.skills.map((s) => [s.name, s.from]), [["coding", path.join(ROOT, "..", "coding")], ["session-status", path.join(ROOT, "..", "session-status")]]);
+  assert.equal(o.license, path.join(ROOT, "..", "LICENSE"));
+  assert.equal(o.architecture, path.join(ROOT, "..", "docs", "architecture.md"));
 });

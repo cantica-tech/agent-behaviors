@@ -163,7 +163,8 @@ function activate(settings, initialRows, extensionPath = "/ext", version = "1.0.
   Object.assign(f.rec, pre);
   f.rec.initialRows = initialRows;
   if (f.rec.skillEntries) f.skillsModule.entries = f.rec.skillEntries;
-  const ext = loadWithMocks("vscode/extension.js", { vscode: f.vscode, "./media/status": f.statusModule, "./media/agent-skills": f.skillsModule });
+  const ext = loadWithMocks("vscode/extension.js", { vscode: f.vscode, "./media/status": f.statusModule,
+    "./media/agent-skills": f.skillsModule, "./media/deploy": require("../shared/deploy") });
   const state = new Map(f.rec.globalState || []);
   const context = { extensionPath, extensionUri: f.vscode.Uri.file(extensionPath), subscriptions: [],
     extension: { packageJSON: { version } },
@@ -434,9 +435,12 @@ test("refresh settings changed in VS Code are saved to session-status.json, with
 function bundledExtension() {
   const ext = fs.mkdtempSync(path.join(MONITOR_ROOT, "ext-"));
   fs.mkdirSync(path.join(ext, "skills", "session-status", "scripts"), { recursive: true });
-  fs.writeFileSync(path.join(ext, "skills", "README.md"), "readme v1");
+  fs.mkdirSync(path.join(ext, "skills", "coding", "toml"), { recursive: true });
+  fs.writeFileSync(path.join(ext, "skills", "session-status", "SKILL.md"), "---\nname: session-status\ndescription: Publish.\n---\n");
+  fs.writeFileSync(path.join(ext, "skills", "coding", "toml", "SKILL.md"), "---\nname: toml\ndescription: Lint TOML.\n---\n");
   fs.writeFileSync(path.join(ext, "skills", "LICENSE"), "Apache");
   fs.writeFileSync(path.join(ext, "skills", "session-status", "scripts", "board.py"), "print(1)");
+  fs.writeFileSync(path.join(ext, "architecture.md"), "# Architecture\n");
   return ext;
 }
 
@@ -444,7 +448,8 @@ test("skills are deployed into <AgentsMonitor>/skills at activation, once per ve
   const ext = bundledExtension();
   const a = activate({}, [], ext, "1.0.0");
   const target = path.join(a.conf.agentsMonitorFolder, "skills");
-  assert.equal(fs.readFileSync(path.join(target, "README.md"), "utf8"), "readme v1");
+  assert.match(fs.readFileSync(path.join(target, "README.md"), "utf8"), /^# Agent skills[\s\S]*\*\*toml\*\*: Lint TOML\./, "generated skills registry");
+  assert.equal(fs.readFileSync(path.join(a.conf.agentsMonitorFolder, "README.md"), "utf8"), "# Architecture\n", "technical README");
   assert.ok(fs.existsSync(path.join(target, "LICENSE")));
   assert.ok(fs.existsSync(path.join(target, "session-status", "scripts", "board.py")));
   assert.equal(fs.readFileSync(path.join(target, ".cantica-agent-status-version"), "utf8").trim(), "1.0.0");
@@ -456,7 +461,7 @@ test("skills are deployed into <AgentsMonitor>/skills at activation, once per ve
   assert.equal(fs.readFileSync(path.join(target, "README.md"), "utf8"), "edited by the user");
   const upgraded = a.ext._test.deploySkills({ ...a.context, extension: { packageJSON: { version: "1.0.1" } } });
   assert.equal(upgraded.status, "deployed");
-  assert.equal(fs.readFileSync(path.join(target, "README.md"), "utf8"), "readme v1", "new version overwrites shipped files");
+  assert.match(fs.readFileSync(path.join(target, "README.md"), "utf8"), /^# Agent skills/, "new version regenerates the registry");
   assert.equal(fs.readFileSync(path.join(target, "mine.txt"), "utf8"), "keep", "other files kept");
 });
 

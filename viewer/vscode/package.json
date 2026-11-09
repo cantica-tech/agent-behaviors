@@ -2,7 +2,7 @@
   "name": "cantica-agent-status",
   "displayName": "Cantica Agent Status",
   "description": "Live status of the agent sessions on this machine, from the agent-behaviors session-status board.",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "publisher": "canticatech",
   "icon": "media/icon.png",
   "license": "Apache-2.0",
