@@ -1,8 +1,8 @@
 {
-  "name": "agent-status",
-  "displayName": "Agent Status",
+  "name": "cantica-agent-status",
+  "displayName": "Cantica Agent Status",
   "description": "Live status of the agent sessions on this machine, from the agent-behaviors session-status board.",
-  "version": "0.10.1",
+  "version": "0.10.2",
   "publisher": "canticatech",
   "icon": "media/icon.png",
   "license": "Apache-2.0",

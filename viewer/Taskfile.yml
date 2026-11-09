@@ -1,0 +1,113 @@
+# Agent Status viewers: build, test, version and Marketplace release tasks.
+# Adapted from catalyst-ui's Taskfile (publish:vscode-extension, publish:vscode-extension:release).
+#
+# The version lives in version.txt; both package.json files (Electron app and
+# VS Code extension) must agree with it (task version:check). Releases are tagged
+# agent-status-v<version>, since this repository also holds the skills.
+
+version: "3"
+
+vars:
+  # The `code` CLI, or the one inside the macOS app bundle when it isn't on PATH.
+  CODE_BIN:
+    sh: command -v code 2>/dev/null || echo "/Applications/Visual Studio Code.app/Contents/Resources/app/bin/code"
+  # The version of record.
+  VERSION:
+    sh: tr -d '[:space:]' < version.txt
+  # The release tag of that version.
+  RELEASE_TAG: "agent-status-v{{.VERSION}}"
+  # The Marketplace token: from the macOS keychain item that VSCE_KEYCHAIN_SERVICE / VSCE_KEYCHAIN_ACCOUNT name
+  # (set in the publisher's shell), else VSCE_PAT as the environment has it; empty elsewhere (CI, Linux).
+  VSCE_PAT:
+    sh: |
+      if [ -n "${VSCE_KEYCHAIN_SERVICE:-}" ] && [ -n "${VSCE_KEYCHAIN_ACCOUNT:-}" ] && command -v security >/dev/null 2>&1; then
+        security find-generic-password -s "$VSCE_KEYCHAIN_SERVICE" -a "$VSCE_KEYCHAIN_ACCOUNT" -w | jq -r '.value'
+      else
+        printf '%s' "${VSCE_PAT:-}"
+      fi
+
+env:
+  VSCE_PAT: "{{.VSCE_PAT}}"
+
+tasks:
+  test:
+    desc: "Run the viewers' unit tests (Electron app and VS Code extension)"
+    cmds:
+      - npm test
+
+  version:check:
+    desc: "Fail unless version.txt, package.json and vscode/package.json carry the same version"
+    silent: true
+    cmds:
+      - |
+        set -e
+        APP="$(node -p "require('./package.json').version")"
+        EXT="$(node -p "require('./vscode/package.json').version")"
+        if [ "$APP" != "{{.VERSION}}" ] || [ "$EXT" != "{{.VERSION}}" ]; then
+          echo "Versions disagree: version.txt {{.VERSION}}, package.json $APP, vscode/package.json $EXT (task version:set VERSION=...)" >&2
+          exit 1
+        fi
+        echo "Version {{.VERSION}} everywhere."
+
+  version:set:
+    desc: "Set the version everywhere: task version:set VERSION=x.y.z (version.txt and both package.json)"
+    requires:
+      vars: [VERSION]
+    cmds:
+      - printf '%s\n' "{{.VERSION}}" > version.txt
+      - npm version "{{.VERSION}}" --no-git-tag-version --allow-same-version
+      - cd vscode && npm version "{{.VERSION}}" --no-git-tag-version --allow-same-version
+
+  build:vscode-extension:
+    desc: "Package the VS Code extension into vscode/agent-status-<version>.vsix"
+    deps: [version:check]
+    dir: vscode
+    cmds:
+      - npm run package
+
+  install:vscode-extension:
+    desc: "Build the .vsix and install it into the local VS Code"
+    deps: [version:check]
+    dir: vscode
+    cmds:
+      - ./install.sh
+
+  publish:vscode-extension:
+    desc: "Publish the Agent Status extension to the VS Code Marketplace, where it gets signed as part of publishing (needs VSCE_PAT set to a real Azure DevOps token scoped Marketplace: Manage for package.json's registered publisher, canticatech — see marketplace.visualstudio.com/manage)"
+    deps: [version:check]
+    dir: vscode
+    preconditions:
+      - sh: '[ -n "$VSCE_PAT" ]'
+        msg: "No Marketplace token: set VSCE_PAT, or VSCE_KEYCHAIN_SERVICE and VSCE_KEYCHAIN_ACCOUNT for a keychain item."
+    cmds:
+      - npm run publish
+
+  publish:vscode-extension:release:
+    desc: "Publish to the Marketplace for a cut release only: refuses unless HEAD is exactly the tag agent-status-v<version> of version.txt and the tests pass, then runs publish:vscode-extension"
+    cmds:
+      - |
+        set -e
+        TAG="$(git describe --tags --exact-match HEAD 2>/dev/null)" || {
+          echo "HEAD is not an exact release tag: tag the release first (git tag {{.RELEASE_TAG}} && git push origin {{.RELEASE_TAG}}), or check out the tag before publishing." >&2
+          exit 1
+        }
+        if [ "$TAG" != "{{.RELEASE_TAG}}" ]; then
+          echo "Release tag ($TAG) doesn't match version.txt ({{.RELEASE_TAG}}): refusing to publish a mismatched build." >&2
+          exit 1
+        fi
+        echo "HEAD is release $TAG, matching version.txt: proceeding to publish."
+      - task: test
+      - task: publish:vscode-extension
+
+  release:checklist:
+    desc: "Print the release checklist of the Agent Status extension"
+    silent: true
+    cmds:
+      - |
+        cat <<'CHECKLIST'
+        Agent Status release checklist (in order):
+          1. The version: task version:set VERSION=x.y.z (version.txt and both package.json), then task version:check.
+          2. task test, and task install:vscode-extension to try the build locally.
+          3. Commit and push; then tag the release: git tag agent-status-v<version> && git push origin agent-status-v<version>.
+          4. With the tag checked out: task publish:vscode-extension:release (Marketplace, only when the owner asks).
+        CHECKLIST

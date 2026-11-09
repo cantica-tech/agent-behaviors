@@ -1,4 +1,4 @@
-# Agent Status for VS Code
+# Cantica Agent Status for VS Code
 
 Shows the live status of the agent sessions on this machine, from the
 [session-status](../../session-status/SKILL.md) board, inside VS Code. It is
